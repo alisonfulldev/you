@@ -1,0 +1,19 @@
+<section class="certificate">
+  <% if (!valid) { %>
+    <div class="card">
+      <h2>Certificado inválido</h2>
+      <p class="muted">O código informado não foi encontrado.</p>
+    </div>
+  <% } else { %>
+    <div class="card">
+      <h2>Status: <span class="badge success">Válido</span></h2>
+      <p><strong>Aluno:</strong> <%= student.name %></p>
+      <p><strong>Curso:</strong> <%= course.title %></p>
+      <p><strong>Data:</strong> <%= new Date(cert.createdAt * 1000).toLocaleString() %></p>
+      <p><strong>Nota:</strong> <%= cert.scorePercent %>%</p>
+      <div class="card-actions">
+        <a class="btn primary" href="/certificados/<%= cert.pdfPath.split('/').pop() %>" download>Baixar PDF</a>
+      </div>
+    </div>
+  <% } %>
+</section>

@@ -1,0 +1,41 @@
+<section class="exam">
+  <h1>Prova: <%= course.title %></h1>
+  <div class="card" style="margin-bottom:16px">
+    <div class="q-head">
+      <p class="q-text">Informe seus dados para o certificado</p>
+    </div>
+    <div class="q-options" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <input class="input" name="student_name" form="examForm" placeholder="Seu nome" required />
+      <input class="input" name="student_email" form="examForm" placeholder="Seu e-mail" type="email" required />
+    </div>
+  </div>
+  <div class="progress"><div class="bar" style="width:0%"></div></div>
+  <form method="post" action="/exam/<%= course.id %>" id="examForm">
+    <% questions.forEach((q, idx) => { %>
+      <div class="card question">
+        <div class="q-head">
+          <span class="q-index">Questão <%= idx + 1 %></span>
+          <p class="q-text"><%= q.text %></p>
+        </div>
+        <div class="q-options">
+          <% q.options.forEach(o => { %>
+            <label class="option">
+              <input type="radio" name="q_<%= q.id %>" value="<%= o.id %>" required />
+              <span><%= o.text %></span>
+            </label>
+          <% }) %>
+        </div>
+      </div>
+    <% }) %>
+    <button class="btn gradient large" type="submit">Enviar Respostas</button>
+  </form>
+</section>
+<script>
+  const form = document.getElementById('examForm');
+  const progress = document.querySelector('.progress .bar');
+  form.addEventListener('change', () => {
+    const total = document.querySelectorAll('.question').length;
+    const answered = Array.from(document.querySelectorAll('.question')).filter(q => q.querySelector('input:checked')).length;
+    progress.style.width = Math.round((answered/total)*100) + '%';
+  });
+</script>

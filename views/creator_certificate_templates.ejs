@@ -1,0 +1,27 @@
+<section class="dashboard">
+  <div class="card">
+    <h2>Escolher Modelo de Certificado: <%= course.title %></h2>
+    <p class="muted">Selecione um dos modelos abaixo. Você poderá editar elementos futuramente.</p>
+    <form method="post" action="/creator/course/<%= course.id %>/certificate-template">
+      <div class="grid" style="grid-template-columns: repeat(4, 1fr); gap: 12px;">
+        <% templates.forEach(t => { %>
+          <label class="card" style="cursor:pointer;">
+            <div class="thumb" style="height:120px; background: linear-gradient(135deg, #f0f3ff, #e0e7ff); display:flex; align-items:center; justify-content:center;">
+              <span class="badge">Modelo <%= t.id %></span>
+            </div>
+            <div class="card-body">
+              <input type="radio" name="templateId" value="<%= t.id %>" <%= (course.certificateTemplateId === t.id ? 'checked' : '') %> />
+              <span class="card-title"> <%= t.name %> </span>
+            </div>
+          </label>
+        <% }) %>
+      </div>
+      <div class="actions" style="margin-top:12px">
+        <button class="btn gradient" type="submit">Avançar</button>
+      </div>
+    </form>
+    <div class="actions" style="margin-top:8px">
+      <a class="btn" href="/creator/course/<%= course.id %>/certificate-editor">Editar modelo com formulário</a>
+    </div>
+  </div>
+</section>

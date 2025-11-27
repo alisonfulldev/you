@@ -1,0 +1,19 @@
+<section class="payment">
+  <div class="card">
+    <h2>Gerar Certificado</h2>
+    <p class="muted">Você foi aprovado com <strong><%= scorePercent %>%</strong>. Conclua o pagamento para gerar seu certificado.</p>
+    <div class="pay-actions">
+      <button class="btn gradient large" id="payBtn">Pagar com Stripe</button>
+    </div>
+  </div>
+</section>
+<script>
+  document.getElementById('payBtn').addEventListener('click', async () => {
+    const res = await fetch('/payment/create', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ examId: <%= examId %> })
+    });
+    const data = await res.json();
+    if (data.url) { window.location.href = data.url; }
+  });
+</script>

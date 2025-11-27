@@ -1,0 +1,10 @@
+<section class="exam">
+  <div class="card">
+    <h2>Resultado</h2>
+    <p>Sua nota foi <strong><%= scorePercent %>%</strong>.</p>
+    <% if (!approved) { %>
+      <p class="muted">Você não atingiu a pontuação mínima. Tente novamente.</p>
+      <a class="btn ghost" href="/exam/<%= course.id %>">Refazer prova</a>
+    <% } %>
+  </div>
+</section>

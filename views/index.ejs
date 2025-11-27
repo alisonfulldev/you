@@ -1,0 +1,38 @@
+<section class="hero">
+  <div class="hero-content">
+    <h1 class="headline">Certificados elegantes para cursos do YouTube</h1>
+    <p class="subhead">Crie cursos, aplique provas e gere certificados com validação e QR Code.</p>
+  </div>
+</section>
+
+<section class="search" style="margin: 12px 0;">
+  <form method="GET" action="/" class="card" style="padding:12px; display:flex; gap:8px;">
+    <input type="text" name="q" value="<%= (typeof q !== 'undefined' ? q : '') %>" placeholder="Buscar curso por título, descrição ou slug" style="flex:1;" />
+    <button class="btn primary" type="submit">Buscar</button>
+  </form>
+  <% if (typeof q !== 'undefined' && (!courses || courses.length === 0)) { %>
+    <p class="muted" style="margin-top:8px;">Nenhum curso encontrado para "<%= q %>".</p>
+  <% } %>
+  <% if (!q) { %>
+    <p class="muted" style="margin-top:8px;">Dica: use palavras-chave do título ou descrição.</p>
+  <% } %>
+  
+</section>
+
+<section class="grid">
+  <% courses.forEach(c => { %>
+    <div class="card">
+      <div class="thumb">
+        <div class="thumb-img"></div>
+      </div>
+      <div class="card-body">
+        <h3 class="card-title"><%= c.title %></h3>
+        <p class="card-desc"><%= c.description %></p>
+        <div class="card-actions">
+          <a class="btn primary" href="/course/<%= c.id %>">Matricular grátis</a>
+          <a class="btn ghost" href="/c/<%= c.slug %>">Link público</a>
+        </div>
+      </div>
+    </div>
+  <% }) %>
+</section>

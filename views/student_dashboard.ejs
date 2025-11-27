@@ -1,0 +1,43 @@
+<section>
+  <div class="row between center" style="margin-bottom: 16px">
+    <h1>Área do Aluno</h1>
+    <form action="/student/logout" method="post">
+      <button class="btn ghost" type="submit">Sair</button>
+    </form>
+  </div>
+  <p>Bem-vindo, <strong><%= user.name %></strong></p>
+
+  <div class="tabs" style="margin-top: 20px">
+    <h2>Meus cursos</h2>
+    <% if ((courses || []).length === 0) { %>
+      <p>Você ainda não possui cursos comprados.</p>
+    <% } else { %>
+      <div class="grid">
+        <% courses.forEach(c => { %>
+          <div class="card">
+            <h3><%= c.title %></h3>
+            <p><%= c.description %></p>
+            <a href="/course/<%= c.id %>" class="btn">Continuar curso</a>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+
+  <div class="tabs" style="margin-top: 32px">
+    <h2>Meus certificados</h2>
+    <% if ((certificates || []).length === 0) { %>
+      <p>Nenhum certificado emitido ainda.</p>
+    <% } else { %>
+      <ul>
+        <% certificates.forEach(ct => { %>
+          <li style="margin-bottom: 8px">
+            Código: <code><%= ct.code %></code>
+            • <a href="/certificate/<%= ct.code %>">Validar</a>
+            • <a href="<%= ct.fileUrl %>" target="_blank">Baixar PDF</a>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+  </div>
+</section>

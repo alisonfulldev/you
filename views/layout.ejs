@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title><%= typeof title !== 'undefined' ? title : 'CertiPay' %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/public/styles.css" />
+</head>
+<body>
+  <nav class="nav">
+    <div class="container nav-bar">
+      <a class="brand" href="/">CertiPay</a>
+      <div class="nav-actions">
+        <a href="/creator/login" class="btn ghost">Criador</a>
+        <% if (student) { %>
+          <a href="/student/dashboard" class="btn ghost">Área do Aluno</a>
+        <% } else { %>
+          <a href="/student/login" class="btn ghost">Área do Aluno</a>
+        <% } %>
+      </div>
+    </div>
+  </nav>
+  <main class="container">
+    <%- body %>
+  </main>
+  <footer class="footer container">
+    <span>© <%= new Date().getFullYear() %> CertiPay • Micro‑SaaS</span>
+  </footer>
+</body>
+</html>

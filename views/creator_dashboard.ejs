@@ -1,0 +1,59 @@
+<section class="dashboard">
+  <h1>Olá, <%= user.name %></h1>
+  <div class="metrics">
+    <div class="metric-card"><div class="metric-label">Receita bruta</div><div class="metric-value">R$ <%= (gross/100).toFixed(2) %></div></div>
+    <div class="metric-card"><div class="metric-label">Receita líquida</div><div class="metric-value">R$ <%= (net/100).toFixed(2) %></div></div>
+  </div>
+
+  <div class="card">
+    <h2>Seus cursos</h2>
+    <table class="table">
+      <thead><tr><th>Título</th><th>Slug</th><th>Preço</th><th>Ações</th></tr></thead>
+      <tbody>
+      <% (courses || []).forEach(c => { %>
+        <tr>
+          <td><%= c.title %></td>
+          <td><code>/c/<%= c.slug %></code></td>
+          <td>R$ <%= (c.priceCents/100).toFixed(2) %></td>
+          <td>
+            <a class="btn ghost" href="/course/<%= c.id %>">Abrir</a>
+            <a class="btn ghost" href="/creator/course/<%= c.id %>/questions">Editar prova</a>
+            <a class="btn ghost" href="/creator/course/<%= c.id %>/certificate-template">Modelo de certificado</a>
+          </td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+    <hr />
+    <h3>Criar novo curso</h3>
+    <form method="post" action="/creator/course" class="grid-form">
+      <input class="input" name="title" placeholder="Título" required />
+      <textarea class="input" name="description" placeholder="Descrição do curso" rows="3" required></textarea>
+      <input class="input" name="slug" placeholder="Slug (ex.: curso-demo)" required />
+      <input class="input" name="playlistUrl" placeholder="URL da playlist" />
+      <input class="input" type="number" name="priceCents" placeholder="Preço (centavos)" required />
+      <input class="input" type="number" name="workloadMinutes" placeholder="Carga horária (min)" />
+      <input class="input" type="number" name="minScorePercent" placeholder="Pontuação mínima (%)" value="70" />
+      <input class="input" type="number" name="attemptsAllowed" placeholder="Tentativas permitidas" />
+      <button class="btn gradient" type="submit">Avançar</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Vendas</h2>
+    <table class="table">
+      <thead><tr><th>ID</th><th>Curso</th><th>Status</th><th>Bruto</th><th>Líquido</th></tr></thead>
+      <tbody>
+      <% (transactions || []).forEach(t => { %>
+        <tr>
+          <td><%= t.id %></td>
+          <td><%= t.courseId %></td>
+          <td><span class="badge <%= t.status === 'paid' ? 'success' : 'warning' %>"><%= t.status %></span></td>
+          <td>R$ <%= (t.grossCents/100).toFixed(2) %></td>
+          <td>R$ <%= (t.netCents/100).toFixed(2) %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>

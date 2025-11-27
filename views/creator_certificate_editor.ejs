@@ -1,0 +1,120 @@
+<%- include('layout', { title: 'Editor de Certificado' }) %>
+
+<div class="container" style="max-width: 1000px; margin: 0 auto;">
+  <h2>Editor de Certificado</h2>
+  <p>Curso: <strong><%= course.title %></strong></p>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <form method="POST" action="/creator/course/<%= course.id %>/certificate-editor" id="editorForm">
+      <div>
+        <label>Título</label>
+        <input type="text" name="title" value="<%= (config.title || '') %>" placeholder="Certificado de Conclusão" required />
+      </div>
+      <div>
+        <label>Texto principal</label>
+        <textarea name="bodyText" rows="6" placeholder="Certificamos que {studentName} concluiu o curso {courseTitle} com nota {scorePercent}% em {date}. Código: {code}."><%= (config.bodyText || '') %></textarea>
+        <small>Placeholders: {studentName}, {courseTitle}, {scorePercent}, {date}, {creatorName}, {code}</small>
+      </div>
+      <div style="display:flex; gap:12px;">
+        <div>
+          <label>Cor do cabeçalho</label>
+          <input type="color" name="headerColor" value="<%= (config.headerColor || '#0ea5e9') %>" />
+        </div>
+        <div>
+          <label>Cor do texto do cabeçalho</label>
+          <input type="color" name="headerTextColor" value="<%= (config.headerTextColor || '#ffffff') %>" />
+        </div>
+      </div>
+      <div style="display:flex; gap:12px;">
+        <div>
+          <label>Fonte</label>
+          <select name="font">
+            <option value="" <%= !config.font ? 'selected' : '' %>>Padrão</option>
+            <option value="Helvetica" <%= config.font==='Helvetica' ? 'selected' : '' %>>Helvetica</option>
+            <option value="Times-Roman" <%= config.font==='Times-Roman' ? 'selected' : '' %>>Times</option>
+            <option value="Courier" <%= config.font==='Courier' ? 'selected' : '' %>>Courier</option>
+          </select>
+        </div>
+        <div>
+          <label>Alinhamento</label>
+          <select name="align">
+            <option value="left" <%= (config.align||'left')==='left' ? 'selected' : '' %>>Esquerda</option>
+            <option value="center" <%= config.align==='center' ? 'selected' : '' %>>Centro</option>
+            <option value="right" <%= config.align==='right' ? 'selected' : '' %>>Direita</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex; gap:12px; align-items:center;">
+        <label><input type="checkbox" name="centered" <%= config.centered ? 'checked' : '' %> /> Centralizar conteúdo</label>
+      </div>
+      <div style="display:flex; gap:12px;">
+        <div>
+          <label>Posição do QR Code</label>
+          <select name="qrPosition">
+            <option value="left" <%= (config.qrPosition||'left')==='left' ? 'selected' : '' %>>Esquerda</option>
+            <option value="right" <%= config.qrPosition==='right' ? 'selected' : '' %>>Direita</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label>Assinatura (nome)</label>
+        <input type="text" name="signatureName" value="<%= (config.signatureName || '') %>" placeholder="Ex.: Diretor Acadêmico" />
+      </div>
+      <div>
+        <label>Logo (caminho local sob /public)</label>
+        <input type="text" name="logoPath" value="<%= (config.logoPath || '') %>" placeholder="Ex.: public/logo.png" />
+      </div>
+      <button type="submit" class="btn-primary">Salvar configurações</button>
+    </form>
+
+    <div>
+      <h3>Preview</h3>
+      <div id="preview" style="border:1px solid #ddd; width:100%; aspect-ratio:1/1.414; position:relative;">
+        <div id="previewHeader" style="height:80px; background:#0ea5e9; color:#fff; display:flex; align-items:center; padding:0 20px;">
+          <h4 id="previewTitle" style="margin:0;">Certificado de Conclusão</h4>
+        </div>
+        <div id="previewBody" style="padding:20px; font-family:Helvetica; text-align:left;">
+          <p id="previewText">Certificamos que {studentName} concluiu o curso {courseTitle} com nota {scorePercent}% em {date}. Código: {code}.</p>
+          <p id="previewSignature" style="margin-top:40px; opacity:0.8;"><%= (config.signatureName || '') %></p>
+        </div>
+        <div id="previewQR" style="position:absolute; bottom:20px; left:20px; width:80px; height:80px; border:1px dashed #999; display:flex; align-items:center; justify-content:center; font-size:12px; color:#666;">QR</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const form = document.getElementById('editorForm');
+  const header = document.getElementById('previewHeader');
+  const title = document.getElementById('previewTitle');
+  const body = document.getElementById('previewBody');
+  const text = document.getElementById('previewText');
+  const sig = document.getElementById('previewSignature');
+  const qr = document.getElementById('previewQR');
+
+  function updatePreview(){
+    const fd = new FormData(form);
+    const headerColor = fd.get('headerColor') || '#0ea5e9';
+    const headerTextColor = fd.get('headerTextColor') || '#ffffff';
+    const titleVal = fd.get('title') || 'Certificado de Conclusão';
+    const bodyVal = fd.get('bodyText') || 'Certificamos que {studentName} concluiu o curso {courseTitle} com nota {scorePercent}% em {date}. Código: {code}.';
+    const align = fd.get('align') || 'left';
+    const font = fd.get('font') || 'Helvetica';
+    const qrPos = fd.get('qrPosition') || 'left';
+    const centered = fd.get('centered') === 'on';
+    const signatureName = fd.get('signatureName') || '';
+    header.style.background = headerColor;
+    header.style.color = headerTextColor;
+    title.textContent = titleVal;
+    text.textContent = bodyVal;
+    body.style.textAlign = align;
+    body.style.fontFamily = font;
+    sig.textContent = signatureName;
+    sig.style.textAlign = align;
+    qr.style.left = qrPos==='left' ? '20px' : '';
+    qr.style.right = qrPos==='right' ? '20px' : '';
+    body.style.justifyContent = centered ? 'center' : 'initial';
+  }
+  form.addEventListener('input', updatePreview);
+  updatePreview();
+</script>

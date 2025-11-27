@@ -1,0 +1,57 @@
+<section class="dashboard">
+  <div class="card">
+    <h2>Criar Prova: <%= course.title %></h2>
+    <p class="muted">Adicione perguntas e marque a alternativa correta.</p>
+    <div id="questions"></div>
+    <div class="actions" style="margin-top:12px">
+      <button class="btn ghost" id="addQuestion">Adicionar pergunta</button>
+      <button class="btn gradient" id="saveQuestions">Avançar</button>
+    </div>
+  </div>
+</section>
+<script>
+  const questionsEl = document.getElementById('questions');
+  document.getElementById('addQuestion').addEventListener('click', () => addQuestion());
+
+  function addQuestion(initial = { text: '', options: ['', '', '', ''] }) {
+    const idx = questionsEl.children.length;
+    const wrap = document.createElement('div');
+    wrap.className = 'card question';
+    wrap.innerHTML = `
+      <div class="q-head"><span class="q-index">Pergunta ${idx+1}</span></div>
+      <input class="input" placeholder="Enunciado" value="${initial.text}" />
+      <div class="q-options">
+        ${initial.options.map((t, i) => `
+          <label class="option">
+            <input type="radio" name="correct_${idx}" ${i===0?'checked':''} />
+            <input class="input" placeholder="Opção ${i+1}" value="${t}" />
+          </label>
+        `).join('')}
+      </div>
+    `;
+    questionsEl.appendChild(wrap);
+  }
+
+  // start with one
+  addQuestion();
+
+  document.getElementById('saveQuestions').addEventListener('click', async () => {
+    const items = Array.from(questionsEl.children).map((qWrap, qIdx) => {
+      const text = qWrap.querySelector('input.input').value.trim();
+      const opts = Array.from(qWrap.querySelectorAll('.q-options .option')).map((optEl, i) => ({
+        text: optEl.querySelector('input.input').value.trim(),
+        correct: optEl.querySelector(`input[type=radio][name=correct_${qIdx}]`).checked
+      }));
+      return { text, options: opts };
+    });
+    const res = await fetch('/creator/questions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ courseId: <%= course.id %>, items })
+    });
+    if (res.redirected) {
+      window.location.href = res.url;
+    } else {
+      window.location.href = `/creator/course/<%= course.id %>/certificate-template`;
+    }
+  });
+</script>
