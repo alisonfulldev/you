@@ -1,20 +1,22 @@
-<section class="exam">
-  <h1>Prova: <%= course.title %></h1>
-  <div class="card" style="margin-bottom:16px">
-    <div class="q-head">
-      <p class="q-text">Informe seus dados para o certificado</p>
+<section class="exam section">
+  <div class="container">
+    <h1 class="headline-xl">Prova: <%= course.title %></h1>
+    <div class="card section-card glass" style="margin-bottom:16px">
+      <div class="q-head">
+        <span class="badge accent">Certificado</span>
+        <p class="q-text">Informe seus dados para o certificado</p>
+      </div>
+      <div class="grid-2">
+        <input class="input" name="student_name" form="examForm" placeholder="Seu nome" required />
+        <input class="input" name="student_email" form="examForm" placeholder="Seu e-mail" type="email" required />
+      </div>
     </div>
-    <div class="q-options" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <input class="input" name="student_name" form="examForm" placeholder="Seu nome" required />
-      <input class="input" name="student_email" form="examForm" placeholder="Seu e-mail" type="email" required />
-    </div>
-  </div>
-  <div class="progress"><div class="bar" style="width:0%"></div></div>
-  <form method="post" action="/exam/<%= course.id %>" id="examForm">
+    <div class="progress"><div class="bar" style="width:0%"></div></div>
+    <form method="post" action="/exam/<%= course.id %>" id="examForm">
     <% questions.forEach((q, idx) => { %>
-      <div class="card question">
+      <div class="card section-card question glass">
         <div class="q-head">
-          <span class="q-index">Questão <%= idx + 1 %></span>
+          <span class="badge neutral">Questão <%= idx + 1 %></span>
           <p class="q-text"><%= q.text %></p>
         </div>
         <div class="q-options">
@@ -27,8 +29,9 @@
         </div>
       </div>
     <% }) %>
-    <button class="btn gradient large" type="submit">Enviar Respostas</button>
-  </form>
+    <button class="btn gradient pill large" type="submit">Enviar Respostas</button>
+    </form>
+  </div>
 </section>
 <script>
   const form = document.getElementById('examForm');

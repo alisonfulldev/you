@@ -12,7 +12,7 @@
       <p><strong>Data:</strong> <%= new Date(cert.createdAt * 1000).toLocaleString() %></p>
       <p><strong>Nota:</strong> <%= cert.scorePercent %>%</p>
       <div class="card-actions">
-        <a class="btn primary" href="/certificados/<%= cert.pdfPath.split('/').pop() %>" download>Baixar PDF</a>
+        <a class="btn primary" href="/certificados/<%= pdfName %>" download>Baixar PDF</a>
       </div>
     </div>
   <% } %>

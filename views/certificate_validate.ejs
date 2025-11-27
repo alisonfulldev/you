@@ -1,0 +1,17 @@
+<section class="certificate">
+  <div class="card">
+    <h2>Validar certificado</h2>
+    <p class="muted">Cole o código do certificado para verificar o status e baixar o PDF.</p>
+    <div class="grid-form">
+      <input id="certCode" class="input" type="text" placeholder="Ex.: abcd1234" />
+      <button id="validateBtn" class="btn primary" type="button">Validar</button>
+    </div>
+  </div>
+</section>
+<script>
+  document.getElementById('validateBtn').addEventListener('click', function(){
+    const code = (document.getElementById('certCode').value || '').trim();
+    if (!code) { alert('Informe o código do certificado'); return; }
+    window.location.href = '/certificate/' + encodeURIComponent(code);
+  });
+</script>

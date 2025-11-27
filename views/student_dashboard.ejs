@@ -7,10 +7,19 @@
   </div>
   <p>Bem-vindo, <strong><%= user.name %></strong></p>
 
+  <div class="card" style="margin-top: 16px; padding: 16px;">
+    <h2>Comece um curso com sua playlist do YouTube</h2>
+    <p>Cole o link da playlist (ou vídeo) para criar seu curso pessoal e acompanhar seu progresso.</p>
+    <form class="row" action="/start" method="post" style="gap: 8px;">
+      <input type="text" name="url" placeholder="https://www.youtube.com/playlist?list=..." style="flex: 1;" />
+      <button class="btn primary" type="submit">Criar curso</button>
+    </form>
+  </div>
+
   <div class="tabs" style="margin-top: 20px">
     <h2>Meus cursos</h2>
     <% if ((courses || []).length === 0) { %>
-      <p>Você ainda não possui cursos comprados.</p>
+      <p>Você ainda não iniciou cursos. Cole sua playlist acima para começar.</p>
     <% } else { %>
       <div class="grid">
         <% courses.forEach(c => { %>

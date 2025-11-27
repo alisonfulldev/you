@@ -1,38 +1,76 @@
-<section class="hero">
-  <div class="hero-content">
-    <h1 class="headline">Certificados elegantes para cursos do YouTube</h1>
-    <p class="subhead">Crie cursos, aplique provas e gere certificados com validação e QR Code.</p>
+<section class="section">
+  <div class="container">
+    <div class="card section-card glass">
+      <h2 class="headline-xl">Estude sua playlist do YouTube com foco e certificado</h2>
+      <p class="subhead-lg">Cole o link da sua playlist e assista por aqui com progresso, prova integrada e emissão de certificado por apenas <strong>R$ 9,90</strong>.</p>
+      <form method="POST" action="/start" class="flex-row">
+        <input class="input" type="url" name="url" placeholder="https://www.youtube.com/playlist?list=..." required style="flex:1" />
+        <button class="btn gradient pill large" type="submit">Começar agora</button>
+      </form>
+    </div>
   </div>
 </section>
 
-<section class="search" style="margin: 12px 0;">
-  <form method="GET" action="/" class="card" style="padding:12px; display:flex; gap:8px;">
-    <input type="text" name="q" value="<%= (typeof q !== 'undefined' ? q : '') %>" placeholder="Buscar curso por título, descrição ou slug" style="flex:1;" />
-    <button class="btn primary" type="submit">Buscar</button>
-  </form>
-  <% if (typeof q !== 'undefined' && (!courses || courses.length === 0)) { %>
-    <p class="muted" style="margin-top:8px;">Nenhum curso encontrado para "<%= q %>".</p>
-  <% } %>
-  <% if (!q) { %>
-    <p class="muted" style="margin-top:8px;">Dica: use palavras-chave do título ou descrição.</p>
-  <% } %>
-  
-</section>
-
-<section class="grid">
-  <% courses.forEach(c => { %>
-    <div class="card">
-      <div class="thumb">
-        <div class="thumb-img"></div>
+<section class="section">
+  <div class="container">
+    <h3 class="headline" style="margin:0 0 16px">Por que assistir aqui e não no YouTube?</h3>
+    <div class="grid">
+      <div class="card glass section-card">
+        <h4 class="card-title">Progresso salvo</h4>
+        <p class="card-desc">Marque aulas como concluídas e retome de onde parou. Seu progresso fica salvo localmente, sem cadastro.</p>
       </div>
-      <div class="card-body">
-        <h3 class="card-title"><%= c.title %></h3>
-        <p class="card-desc"><%= c.description %></p>
-        <div class="card-actions">
-          <a class="btn primary" href="/course/<%= c.id %>">Matricular grátis</a>
-          <a class="btn ghost" href="/c/<%= c.slug %>">Link público</a>
-        </div>
+      <div class="card glass section-card">
+        <h4 class="card-title">Foco no estudo</h4>
+        <p class="card-desc">Ambiente mais limpo, menos distrações e melhor fluxo para aprender em sequência.</p>
+      </div>
+      <div class="card glass section-card">
+        <h4 class="card-title">Prova integrada</h4>
+        <p class="card-desc">Valide seu aprendizado com questões objetivas e acompanhe seu desempenho.</p>
+      </div>
+      <div class="card glass section-card">
+        <h4 class="card-title">Certificado acessível</h4>
+        <p class="card-desc">Emita certificado com seu nome por apenas <strong>R$ 9,90</strong>, após concluir a prova ou compra direta.</p>
       </div>
     </div>
-  <% }) %>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <h3 class="headline" style="margin:0 0 16px">Como funciona</h3>
+    <div class="grid">
+      <div class="card glass section-card">
+        <span class="badge neutral">1</span>
+        <h4 class="card-title" style="margin-top:6px">Cole o link da playlist</h4>
+        <p class="card-desc">Suporte para playlists completas e vídeos únicos do YouTube.</p>
+      </div>
+      <div class="card glass section-card">
+        <span class="badge neutral">2</span>
+        <h4 class="card-title" style="margin-top:6px">Estude com progresso</h4>
+        <p class="card-desc">Marque aulas concluídas e veja seu avanço. Tudo salvo no seu navegador.</p>
+      </div>
+      <div class="card glass section-card">
+        <span class="badge neutral">3</span>
+        <h4 class="card-title" style="margin-top:6px">Faça a prova</h4>
+        <p class="card-desc">Responda questões do curso para validar o aprendizado e liberar o certificado.</p>
+      </div>
+      <div class="card glass section-card">
+        <span class="badge accent">Certificado</span>
+        <h4 class="card-title" style="margin-top:6px">Emita por R$ 9,90</h4>
+        <p class="card-desc">Pague com seu nome e e-mail e receba o certificado imediatamente.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="card section-card glass" style="display:flex;align-items:center;justify-content:space-between;gap:18px">
+      <div>
+        <h3 class="headline" style="margin:0">Certificado</h3>
+        <p class="muted" style="margin:6px 0 0">Valor único, sem mensalidade: <strong>R$ 9,90</strong></p>
+      </div>
+      <a class="btn gradient pill large" href="/payment">Emitir certificado</a>
+    </div>
+  </div>
 </section>

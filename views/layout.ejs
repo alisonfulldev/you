@@ -3,29 +3,71 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title><%= typeof title !== 'undefined' ? title : 'CertiPay' %></title>
+  <title><%= typeof title !== 'undefined' ? title : 'UTUBE certificados' %></title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/public/styles.css" />
 </head>
 <body>
-  <nav class="nav">
+  <header class="yt-header">
     <div class="container nav-bar">
-      <a class="brand" href="/">CertiPay</a>
-      <div class="nav-actions">
-        <a href="/creator/login" class="btn ghost">Criador</a>
-        <% if (student) { %>
-          <a href="/student/dashboard" class="btn ghost">Área do Aluno</a>
-        <% } else { %>
-          <a href="/student/login" class="btn ghost">Área do Aluno</a>
-        <% } %>
+      <a class="yt-logo" href="/">
+        <span class="logo-icon" aria-hidden="true"></span>
+        <span class="logo-text">UTUBE certificados</span>
+      </a>
+      <form class="yt-search" method="POST" action="/start">
+        <input type="text" name="url" value="" placeholder="Cole aqui o link da playlist (YouTube)" />
+        <button class="btn primary" type="submit">Iniciar</button>
+      </form>
+      <div class="yt-actions">
+        <button id="sidebarToggle" class="btn ghost mobile-only" type="button" aria-label="Abrir menu">Menu</button>
+        <button id="themeToggle" class="btn ghost" type="button" aria-label="Alternar tema">Tema</button>
       </div>
     </div>
-  </nav>
-  <main class="container">
-    <%- body %>
-  </main>
+  </header>
+  <div class="yt-shell">
+    <div class="yt-backdrop" aria-hidden="true"></div>
+    <aside class="yt-sidebar">
+      <nav class="yt-menu">
+        <a class="yt-menu-item" href="/">Início</a>
+        <a class="yt-menu-item" href="/certificate/validate">Validar certificado</a>
+      </nav>
+    </aside>
+    <main class="yt-main">
+      <div class="container">
+        <%- body %>
+      </div>
+    </main>
+  </div>
   <footer class="footer container">
-    <span>© <%= new Date().getFullYear() %> CertiPay • Micro‑SaaS</span>
+    <span>© <%= new Date().getFullYear() %> UTUBE certificados</span>
   </footer>
+  <script src="/public/react/utube-app.iife.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function(){
+      // Mount Home feed
+      const rootEl = document.querySelector('#react-root');
+      if(rootEl && window.UtubeApp && typeof window.UtubeApp.mount==='function'){ window.UtubeApp.mount('#react-root'); }
+      // Theme toggle with persistence
+      const root = document.documentElement;
+      const saved = localStorage.getItem('theme');
+      if (saved) root.setAttribute('data-theme', saved);
+      document.getElementById('themeToggle')?.addEventListener('click', function(){
+        const cur = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', cur);
+        localStorage.setItem('theme', cur);
+      });
+      // Mark active menu item
+      const path = location.pathname;
+      document.querySelectorAll('.yt-menu a').forEach(a => { if (a.getAttribute('href') === path) a.classList.add('active'); });
+
+      // Sidebar toggle (mobile)
+      const body = document.body;
+      const toggle = document.getElementById('sidebarToggle');
+      const backdrop = document.querySelector('.yt-backdrop');
+      toggle?.addEventListener('click', () => { body.classList.toggle('sidebar-open'); });
+      backdrop?.addEventListener('click', () => { body.classList.remove('sidebar-open'); });
+      document.querySelectorAll('.yt-menu-item').forEach(el => el.addEventListener('click', () => { body.classList.remove('sidebar-open'); }));
+    });
+  </script>
 </body>
 </html>

@@ -1,6 +1,9 @@
 <section>
   <h1>Entrar na Área do Aluno</h1>
   <form action="/student/login" method="post" class="form">
+    <% if (typeof next !== 'undefined' && next) { %>
+      <input type="hidden" name="next" value="<%= next %>" />
+    <% } %>
     <div class="form-row">
       <label for="email">E-mail</label>
       <input type="email" id="email" name="email" required />

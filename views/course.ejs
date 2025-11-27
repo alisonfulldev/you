@@ -2,76 +2,21 @@
   <div class="course-header">
     <h1><%= course.title %></h1>
     <p class="muted"><%= course.description %></p>
-    <% /* Removido link externo: curso deve ser assistido dentro da plataforma */ %>
   </div>
-  <% if (course.playlistUrl) { %>
-    <div class="card">
-      <h3>Aulas</h3>
-      <div id="player" style="width:100%; aspect-ratio:16/9; background:#000;"></div>
-      <p id="progressInfo" class="muted" style="margin-top:8px;">Progresso: 0 concluídas</p>
-    </div>
-  <% } %>
+  <div id="react-watch"></div>
+  <noscript>
+    <p class="muted">Ative o JavaScript para assistir às aulas.</p>
+  </noscript>
   <div class="course-actions" style="margin-top:12px;">
-    <a id="examBtn" class="btn" href="/exam/<%= course.id %>" <%= (videos && videos.length>0 && (!completedIds || completedIds.size < videos.length)) ? 'disabled' : '' %>>Iniciar Prova</a>
+    <a class="btn pill" id="examBtn" href="/exam/<%= course.id %>" style="margin-right:8px">Fazer Prova</a>
+    <a id="certBtn" class="btn ghost" href="/course/<%= course.id %>/certificate">Emitir Certificado</a>
   </div>
 </section>
 
-<% if (course.playlistUrl) { %>
 <script>
-  const playlistUrl = '<%= course.playlistUrl || '' %>';
-  const courseId = <%= course.id %>;
-  const sessionId = '<%= sessionId || '' %>';
-  const examBtn = document.getElementById('examBtn');
-  const info = document.getElementById('progressInfo');
-
-  function extractPlaylistId(url){
-    try{ const u = new URL(url); return u.searchParams.get('list'); }catch{ return null; }
-  }
-  function enableExamIfCompleted(total, completed){
-    info.textContent = `Progresso: ${completed} de ${total} concluídas`;
-    if (total > 0 && completed >= total) {
-      examBtn.removeAttribute('disabled'); examBtn.classList.add('gradient');
-    } else {
-      examBtn.setAttribute('disabled', 'true'); examBtn.classList.remove('gradient');
+  window.addEventListener('DOMContentLoaded', function(){
+    if (window.UtubeApp && typeof window.UtubeApp.mountWatch === 'function') {
+      window.UtubeApp.mountWatch({ courseId: <%= course.id %> });
     }
-  }
-
-  const listId = extractPlaylistId(playlistUrl);
-  if (listId) {
-    const tag = document.createElement('script'); tag.src = 'https://www.youtube.com/iframe_api'; document.body.appendChild(tag);
-    let player;
-    window.onYouTubeIframeAPIReady = function(){
-      player = new YT.Player('player', {
-        height: '390', width: '640',
-        playerVars: { listType: 'playlist', list: listId, rel: 0, controls: 1, modestbranding: 1 },
-        events: { 'onReady': onPlayerReady, 'onStateChange': onPlayerStateChange }
-      });
-    };
-    async function syncPlaylist(){
-      try{
-        const ids = (player.getPlaylist && player.getPlaylist()) || [];
-        if (ids.length) {
-          await fetch(`/course/${courseId}/playlist`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoIds: ids }) });
-        }
-      }catch(e){}
-    }
-    async function onPlayerReady(){ await syncPlaylist(); updateSummary(); }
-    async function updateSummary(){
-      try{
-        const ids = (player.getPlaylist && player.getPlaylist()) || [];
-        const res = await fetch(`/course/${courseId}/progress`, { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ sessionId }) });
-        const json = await res.json(); const total = ids.length || json.total || 0; const completed = json.completed || 0; enableExamIfCompleted(total, completed);
-      }catch(e){}
-    }
-    async function markCompleted(){
-      try{
-        const vdata = player.getVideoData(); const vid = vdata && vdata.video_id; const dur = player.getDuration ? player.getDuration() : 0;
-        if (!vid) return;
-        await fetch(`/course/${courseId}/progress`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId, videoId: vid, watchedSeconds: dur, durationSeconds: dur, completed: true }) });
-        updateSummary();
-      }catch(e){}
-    }
-    function onPlayerStateChange(ev){ if (ev.data === YT.PlayerState.ENDED) { markCompleted(); } }
-  }
+  });
 </script>
-<% } %>

@@ -93,6 +93,14 @@ export const certificates = sqliteTable("certificates", {
   createdAt: integer("created_at").notNull().default(sql`unixepoch()`),
 });
 
+// Matrículas gratuitas (acesso ao curso sem certificação)
+export const enrollments = sqliteTable("enrollments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  studentId: integer("student_id").notNull().references(() => students.id),
+  courseId: integer("course_id").notNull().references(() => courses.id),
+  createdAt: integer("created_at").notNull().default(sql`unixepoch()`),
+});
+
 // Videos da playlist do curso
 export const courseVideos = sqliteTable("course_videos", {
   id: integer("id").primaryKey({ autoIncrement: true }),
