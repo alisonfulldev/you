@@ -1,0 +1,16 @@
+# Certificados PDF e diretórios de storage não devem ser versionados
+certificados/
+storage/
+
+# Dependências e artefatos comuns
+node_modules/
+*.log
+dist/
+build/
+
+# Ambiente
+.env
+ 
+# Banco de dados local e diretórios de dados
+data.db
+data/
