@@ -8,8 +8,8 @@
     <p class="muted">Ative o JavaScript para assistir às aulas.</p>
   </noscript>
   <div class="course-actions" style="margin-top:12px;">
-    <a class="btn pill" id="examBtn" href="/exam/<%= course.id %>" style="margin-right:8px">Fazer Prova</a>
-    <a id="certBtn" class="btn ghost" href="/course/<%= course.id %>/certificate">Emitir Certificado</a>
+    <a class="btn pill" id="certBtn" href="/course/<%= course.id %>/certificate" style="margin-right:8px">Emitir Certificado</a>
+    <button class="btn ghost" id="syncComplete" type="button" title="Sincroniza a conclusão no servidor">Sincronizar conclusão</button>
   </div>
 </section>
 
@@ -18,5 +18,53 @@
     if (window.UtubeApp && typeof window.UtubeApp.mountWatch === 'function') {
       window.UtubeApp.mountWatch({ courseId: <%= course.id %> });
     }
+    // Verificar progresso e bloquear/permitir emissão de certificado
+    const certBtn = document.getElementById('certBtn');
+    const syncBtn = document.getElementById('syncComplete');
+    // Handler persistente para bloquear clique quando incompleto
+    const blockCert = function(e){ e.preventDefault(); alert('Certificado bloqueado, conclua o curso para emitir'); };
+
+    async function syncExamAccess(){
+      try {
+        const res = await fetch('/course/<%= course.id %>/progress-summary');
+        const data = await res.json();
+        if (!data || !data.ok) return;
+        const total = Number(data.total||0);
+        const completed = Number(data.completed||0);
+        const incomplete = total > 0 && completed < total;
+        if (incomplete) {
+          certBtn.classList.add('ghost');
+          certBtn.textContent = 'Certificado bloqueado';
+          certBtn.removeEventListener('click', blockCert);
+          certBtn.addEventListener('click', blockCert);
+        }
+        if (!incomplete) {
+          certBtn.classList.remove('ghost');
+          certBtn.textContent = 'Emitir Certificado';
+          certBtn.removeEventListener('click', blockCert);
+        }
+      } catch {}
+    }
+    syncExamAccess();
+
+    // Sincronizar conclusão (marca todas as aulas como concluídas no servidor)
+    syncBtn?.addEventListener('click', async function(){
+      try {
+        const items = <%- JSON.stringify(videos.map(v => ({ videoId: v.videoId, completed: true }))) %>;
+        const res = await fetch('/course/<%= course.id %>/progress', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items })
+        });
+        const data = await res.json();
+        if (data && data.ok) {
+          alert(`Progresso sincronizado: ${data.completed} de ${data.total}`);
+          syncExamAccess();
+        } else {
+          alert('Falha ao sincronizar progresso.');
+        }
+      } catch (e) {
+        alert('Erro ao sincronizar progresso.');
+      }
+    });
   });
 </script>

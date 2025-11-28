@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title><%= typeof title !== 'undefined' ? title : 'UTUBE certificados' %></title>
+  <title><%= typeof title !== 'undefined' ? title : 'YOU certificados' %></title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/public/styles.css" />
 </head>
@@ -11,11 +11,11 @@
   <header class="yt-header">
     <div class="container nav-bar">
       <a class="yt-logo" href="/">
-        <span class="logo-icon" aria-hidden="true"></span>
-        <span class="logo-text">UTUBE certificados</span>
+        <img src="/public/logo.png" alt="Logo" class="logo-img" onerror="this.style.display='none'" />
+        <span class="logo-text">YOU certificados</span>
       </a>
       <form class="yt-search" method="POST" action="/start">
-        <input type="text" name="url" value="" placeholder="Cole aqui o link da playlist (YouTube)" />
+        <input class="input pill large" type="text" name="url" value="" placeholder="Cole aqui o link da playlist (YouTube)" />
         <button class="btn primary" type="submit">Iniciar</button>
       </form>
       <div class="yt-actions">
@@ -39,7 +39,7 @@
     </main>
   </div>
   <footer class="footer container">
-    <span>© <%= new Date().getFullYear() %> UTUBE certificados</span>
+    <span>© <%= new Date().getFullYear() %> YOU certificados</span>
   </footer>
   <script src="/public/react/utube-app.iife.js"></script>
   <script>

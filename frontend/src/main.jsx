@@ -15,10 +15,10 @@ function formatWorkload(mins) {
 
 function Card({ course, enrolled, onEnroll }) {
   const isFree = (course.priceCents || 0) === 0
-  const actionLabel = isFree ? (enrolled ? 'Continuar curso' : 'Matricular grátis') : 'Fazer exame'
+  const actionLabel = isFree ? (enrolled ? 'Continuar curso' : 'Matricular grátis') : 'Acessar curso'
   const onAction = () => {
     if (isFree) return onEnroll(course)
-    window.location.href = `/exam/${course.id}`
+    window.location.href = `/course/${course.id}`
   }
   return (
     <div className="card" style={{ transform: 'translateZ(0)', transition: '.2s', willChange: 'transform' }}
@@ -184,10 +184,10 @@ function WatchApp({ courseId }) {
       const total = items.length || 0
       const completed = items.filter(it => !!map[it.videoId]).length
       setSummary({ total, completed })
-      const examBtn = document.getElementById('examBtn')
-      if (examBtn) {
+      const certBtn = document.getElementById('certBtn')
+      if (certBtn) {
         const can = total > 0 && completed >= total
-        if (can) { examBtn.classList.add('gradient') } else { examBtn.classList.remove('gradient') }
+        if (can) { certBtn.classList.add('gradient') } else { certBtn.classList.remove('gradient') }
       }
     } catch (e) { console.error(e) }
   }

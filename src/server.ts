@@ -371,10 +371,76 @@ app.get("/course/:id/certificate", async (req, res) => {
   const id = Number(req.params.id);
   const course = (await db.select().from(courses).where(eq(courses.id, id)))[0];
   if (!course) return res.status(404).send("Curso não encontrado");
-  if ((course.priceCents as number) > 0 && !stripe) {
-    return res.status(400).send("Pagamento indisponível: Stripe não configurado");
+  const cookies = (req as any).cookies || {};
+  let sessionId = cookies["cp_session"];
+  if (!sessionId) {
+    sessionId = Math.random().toString(36).slice(2) + Date.now();
+    res.cookie("cp_session", sessionId, { httpOnly: false });
   }
-  res.render("payment", { course });
+  const vids = await db.select().from(courseVideos).where(eq(courseVideos.courseId, id));
+  const progRows = await db.select().from(progress).where(and(eq(progress.courseId, id), eq(progress.sessionId, sessionId)));
+  const completedCount = progRows.filter(p => Number(p.completed) === 1 || p.completed === true).length;
+  const blocked = vids.length > 0 && completedCount < vids.length;
+  res.render("certificate_issue", { course, total: vids.length, completed: completedCount, blocked });
+});
+
+// Emissão direta de certificado após conclusão do curso (sem prova, sem pagamento)
+app.post("/course/:id/certificate", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const course = (await db.select().from(courses).where(eq(courses.id, id)))[0];
+    if (!course) return res.status(404).json({ error: "Curso não encontrado" });
+
+    const cookies = (req as any).cookies || {};
+    let sessionId = cookies["cp_session"];
+    if (!sessionId) {
+      sessionId = Math.random().toString(36).slice(2) + Date.now();
+      res.cookie("cp_session", sessionId, { httpOnly: false });
+    }
+    const vids = await db.select().from(courseVideos).where(eq(courseVideos.courseId, id));
+    const progRows = await db.select().from(progress).where(and(eq(progress.courseId, id), eq(progress.sessionId, sessionId)));
+    const completedCount = progRows.filter(p => Number(p.completed) === 1 || p.completed === true).length;
+    if (vids.length > 0 && completedCount < vids.length) {
+      return res.status(403).json({ error: "Certificado bloqueado: conclua todas as aulas para emitir.", total: vids.length, completed: completedCount });
+    }
+
+    // Dados do aluno
+    const name = String((req.body?.student_name || req.body?.name || '').trim());
+    const email = String((req.body?.student_email || req.body?.email || '').trim());
+    if (!name || !email) return res.status(400).json({ error: "Informe nome e e-mail" });
+
+    let student = (await db.select().from(students).where(eq(students.email, email)))[0];
+    if (!student) {
+      const hash = await bcrypt.hash(`${Date.now()}-${email}`, 10);
+      const ins = await db.insert(students).values({ name, email, passwordHash: hash }).returning({ id: students.id });
+      student = { id: ins[0].id, name, email } as any;
+    }
+
+    // Registrar transação "direct" como paga e emitir certificado
+    const gross = course.priceCents as number;
+    const fee = Math.round((gross * 20) / 100);
+    const net = gross - fee;
+    const trxIns = await db.insert(transactions).values({
+      courseId: course.id as number,
+      creatorId: course.creatorId as number,
+      studentId: student.id as number,
+      grossCents: gross,
+      platformFeeCents: fee,
+      netCents: net,
+      provider: "direct",
+      status: "paid",
+    }).returning({ id: transactions.id });
+    const transactionId = trxIns[0].id as number;
+
+    const certStd = await generateCertificate({ id: transactionId, courseId: course.id, creatorId: course.creatorId, studentId: student.id }, 100);
+    const certA3 = await generateCertificate({ id: transactionId, courseId: course.id, creatorId: course.creatorId, studentId: student.id, overrideCertificateConfig: { size: 'A3' } }, 100);
+
+    const fileUrl = `${process.env.PUBLIC_URL || "http://localhost:3000"}/certificados/${path.basename(String(certStd.pdfPath))}`;
+    const fileUrlA3 = `${process.env.PUBLIC_URL || "http://localhost:3000"}/certificados/${path.basename(String(certA3.pdfPath))}`;
+    return res.json({ ok: true, code: certStd.code, fileUrl, validateUrl: `${process.env.PUBLIC_URL || "http://localhost:3000"}/certificate/${certStd.code}`, codeA3: certA3.code, fileUrlA3, validateUrlA3: `${process.env.PUBLIC_URL || "http://localhost:3000"}/certificate/${certA3.code}` });
+  } catch (e) {
+    res.status(500).json({ error: `Erro ao emitir certificado: ${(e as Error).message}` });
+  }
 });
 
 // Fallback: acessar /payment sem contexto de curso
@@ -442,8 +508,62 @@ app.post("/course/:id/playlist", requireCreator, async (req, res) => {
 // Progresso local — no-op no servidor
 app.post("/course/:id/progress", async (req, res) => {
   const id = Number(req.params.id);
+  const cookies = (req as any).cookies || {};
+  let sessionId = cookies["cp_session"];
+  if (!sessionId) {
+    sessionId = Math.random().toString(36).slice(2) + Date.now();
+    res.cookie("cp_session", sessionId, { httpOnly: false });
+  }
+
+  const body = req.body || {};
+  const items: Array<{ videoId: string; completed?: any; watchedSeconds?: any; durationSeconds?: any }> = Array.isArray(body.items)
+    ? body.items
+    : (body.videoId ? [{ videoId: String(body.videoId), completed: body.completed, watchedSeconds: body.watchedSeconds, durationSeconds: body.durationSeconds }] : []);
+
+  for (const it of items) {
+    const vid = String(it.videoId);
+    if (!vid) continue;
+    const existing = await db.select().from(progress)
+      .where(and(eq(progress.courseId, id), eq(progress.sessionId, sessionId), eq(progress.videoId, vid)));
+    const payload: any = {};
+    const completedNorm = (it.completed === true) || (String(it.completed).toLowerCase() === 'true') || (Number(it.completed) === 1);
+    if (it.completed != null) payload.completed = completedNorm;
+    if (Number.isFinite(Number(it.watchedSeconds))) payload.watchedSeconds = Number(it.watchedSeconds);
+    if (Number.isFinite(Number(it.durationSeconds))) payload.durationSeconds = Number(it.durationSeconds);
+    if (existing.length > 0) {
+      await db.update(progress).set(payload)
+        .where(and(eq(progress.courseId, id), eq(progress.sessionId, sessionId), eq(progress.videoId, vid)));
+    } else {
+      await db.insert(progress).values({
+        sessionId,
+        courseId: id,
+        videoId: vid,
+        watchedSeconds: payload.watchedSeconds ?? 0,
+        durationSeconds: payload.durationSeconds ?? 0,
+        completed: payload.completed ?? false,
+      });
+    }
+  }
+
   const vids = await db.select().from(courseVideos).where(eq(courseVideos.courseId, id));
-  res.json({ ok: true, total: vids.length, completed: 0 });
+  const progRows = await db.select().from(progress).where(and(eq(progress.courseId, id), eq(progress.sessionId, sessionId)));
+  const completedCount = progRows.filter(p => Number(p.completed) === 1 || p.completed === true).length;
+  res.json({ ok: true, total: vids.length, completed: completedCount });
+});
+
+// Resumo de progresso para a sessão atual
+app.get("/course/:id/progress-summary", async (req, res) => {
+  const id = Number(req.params.id);
+  const cookies = (req as any).cookies || {};
+  let sessionId = cookies["cp_session"];
+  if (!sessionId) {
+    sessionId = Math.random().toString(36).slice(2) + Date.now();
+    res.cookie("cp_session", sessionId, { httpOnly: false });
+  }
+  const vids = await db.select().from(courseVideos).where(eq(courseVideos.courseId, id));
+  const progRows = await db.select().from(progress).where(and(eq(progress.courseId, id), eq(progress.sessionId, sessionId)));
+  const completedCount = progRows.filter(p => Number(p.completed) === 1 || p.completed === true).length;
+  res.json({ ok: true, total: vids.length, completed: completedCount });
 });
 
 // API para SPA React
@@ -554,6 +674,23 @@ async function generateAiQuestionsForCourse(courseId: number) {
     }
   }
 
+  // Purga global de questões meta antigas (sem curso vinculado) para evitar repetição
+  try {
+    const badOpts = await db.select().from(options).where(
+      or(
+        like(options.text, 'Explicação simples%'),
+        like(options.text, 'Afirmação sem relação%'),
+        like(options.text, 'Ideia que contradiz%'),
+        like(options.text, 'Informação genérica%')
+      )
+    );
+    const badQIds = Array.from(new Set(badOpts.map((o: any) => o.questionId as number))).filter(Number.isFinite);
+    if (badQIds.length) {
+      await db.delete(options).where(inArray(options.questionId, badQIds));
+      await db.delete(questions).where(inArray(questions.id, badQIds));
+    }
+  } catch {}
+
   const vids = (await db.select().from(courseVideos).where(eq(courseVideos.courseId, courseId)))
     .sort((a,b)=> (a.position||0)-(b.position||0));
 
@@ -585,49 +722,68 @@ async function generateAiQuestionsForCourse(courseId: number) {
     titles.push(t || `Aula ${v.position || ""}`);
   }
 
-  const apiKey = process.env.OPENAI_API_KEY || process.env.AI_API_KEY || "";
+  // Detecção de domínio: Eletrônica — gerar questões curadas e simples
+  const contextText = [course.title, course.description, ...titles].join(" ").toLowerCase();
+  const isElectronics = ["eletron", "eletrôn", "eletronic", "ddp", "fem", "corrente", "tensão", "ohm", "resistor", "capacitor", "diodo", "transistor"].some(k => contextText.includes(k));
   let generated: Array<{ question: string; options: string[]; answerIndex: number }> | null = null;
+  if (isElectronics) {
+    generated = [
+      { question: "Qual é a relação correta da Lei de Ohm?", options: ["V = R × I", "V = R ÷ I", "V = I ÷ R", "V = R + I"], answerIndex: 0 },
+      { question: "O que significa DDP em eletrônica?", options: ["Diferença de potencial", "Diodo de potência", "Desvio de parâmetro", "Distribuição de potência"], answerIndex: 0 },
+      { question: "Qual é a função de um resistor?", options: ["Opor-se à passagem de corrente elétrica", "Armazenar carga elétrica", "Converter corrente em luz", "Oscilar sinal AC"], answerIndex: 0 },
+      { question: "O que um capacitor armazena?", options: ["Carga elétrica", "Calor", "Som", "Pressão"], answerIndex: 0 },
+      { question: "Qual é a característica principal de um diodo?", options: ["Permitir corrente em um sentido e bloquear no outro", "Aumentar a tensão de entrada", "Oscilar a frequência de sinal", "Armazenar energia magnética"], answerIndex: 0 },
+      { question: "Para que serve um transistor em um circuito?", options: ["Amplificar ou chavear sinais", "Armazenar energia como um capacitor", "Medir resistência", "Converter AC em DC"], answerIndex: 0 },
+    ];
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY || process.env.AI_API_KEY || "";
   try {
-    if (apiKey) {
-      const f = (global as any).fetch ? (global as any).fetch : (await import("node-fetch")).default as any;
-      const prompt = [
-        `Você é um gerador de provas simples.`,
-        `Crie 6 questões fáceis e diretas, de múltipla escolha (4 alternativas, apenas 1 correta).`,
-        `Cada questão deve focar em UM tópico específico entre os títulos das aulas do curso (não misture assuntos).`,
-        `Escreva perguntas curtas e claras, sem ambiguidade, usando linguagem simples.`,
-        `Evite repetir estrutura ou conteúdo entre perguntas. Varie o foco e a redação.`,
-        `Responda APENAS em JSON Puro no formato:`,
-        `[{"question":"texto curto e objetivo","options":["A","B","C","D"],"answerIndex":0}]`,
-        `Curso: ${course.title}.`,
-        `Descrição: ${course.description}.`,
-        `Títulos das aulas (use como base, uma por questão): ${titles.join(" | ")}.`,
-      ].join("\n");
-      const resp = await f("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.2,
-        }),
-      });
-      const data = await resp.json();
-      let content = data?.choices?.[0]?.message?.content || "";
-      content = content.replace(/```json|```/g, "").trim();
-      try {
-        const parsed = JSON.parse(content);
-        if (Array.isArray(parsed)) {
-          // Remover repetições por texto da questão
-          const seen = new Set<string>();
-          generated = parsed.filter((q: any) => {
-            const key = String(q?.question || "").toLowerCase().trim();
-            if (!key || seen.has(key)) return false;
-            seen.add(key);
-            return Array.isArray(q?.options) && q.options.length === 4 && Number.isInteger(q?.answerIndex);
-          }).slice(0, 6);
+    if (!generated) {
+      if (apiKey) {
+        const f = (global as any).fetch ? (global as any).fetch : (await import("node-fetch")).default as any;
+        const prompt = [
+          `Você é um gerador de provas simples para iniciantes (pt-BR).`,
+          `Crie 6 questões fáceis e diretas, de múltipla escolha (4 alternativas, apenas 1 correta).`,
+          `Cada questão deve focar em UM tópico específico (uma aula por questão).`,
+          `As perguntas devem ser factuais sobre o conteúdo ensinado (como definições, função de componentes, relações básicas).`,
+          `Evite perguntas genéricas do tipo "qual opção descreve..." ou metáforas; use questões objetivas.`,
+          `Opções simples e curtas: 1 correta, 3 plausíveis porém incorretas; sem pegadinhas.`,
+          `Use linguagem clara e iniciante; não misture assuntos entre perguntas.`,
+          `Responda APENAS em JSON Puro no formato:`,
+          `[{"question":"texto curto e objetivo","options":["A","B","C","D"],"answerIndex":0}]`,
+          `Curso: ${course.title}.`,
+          `Descrição: ${course.description}.`,
+          `Títulos das aulas (baseie cada pergunta em uma aula): ${titles.join(" | ")}.`,
+          `Se o curso for de eletrônica, priorize questões sobre componentes (resistor, capacitor, diodo, transistor), grandezas (tensão/DDP, corrente, resistência, potência) e leis básicas (Lei de Ohm).`,
+        ].join("\n");
+        const resp = await f("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+          body: JSON.stringify({
+            model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.2,
+          }),
+        });
+        const data = await resp.json();
+        let content = data?.choices?.[0]?.message?.content || "";
+        content = content.replace(/```json|```/g, "").trim();
+        try {
+          const parsed = JSON.parse(content);
+          if (Array.isArray(parsed)) {
+            // Remover repetições por texto da questão
+            const seen = new Set<string>();
+            generated = parsed.filter((q: any) => {
+              const key = String(q?.question || "").toLowerCase().trim();
+              if (!key || seen.has(key)) return false;
+              seen.add(key);
+              return Array.isArray(q?.options) && q.options.length === 4 && Number.isInteger(q?.answerIndex);
+            }).slice(0, 6);
+          }
+        } catch (e) {
+          generated = null;
         }
-      } catch (e) {
-        generated = null;
       }
     }
   } catch (e) {
@@ -638,6 +794,93 @@ async function generateAiQuestionsForCourse(courseId: number) {
   if (!generated || !Array.isArray(generated) || generated.length === 0) {
     function byTitleToQA(t: string) {
       const tl = t.toLowerCase();
+      // Eletrônica (priorizar conteúdo factual ensinado)
+      if (tl.includes("eletron") || tl.includes("eletrôn")) {
+        if (tl.includes("ohm") || tl.includes("lei de ohm")) {
+          return {
+            question: "Qual é a relação correta da Lei de Ohm?",
+            options: [
+              "V = R × I",
+              "V = R ÷ I",
+              "V = I ÷ R",
+              "V = R + I",
+            ],
+            answerIndex: 0,
+          };
+        }
+        if (tl.includes("corrente") || tl.includes("ddp") || tl.includes("tensão") || tl.includes("fem")) {
+          return {
+            question: "O que significa DDP em eletrônica?",
+            options: [
+              "Diferença de potencial",
+              "Diodo de potência",
+              "Desvio de parâmetro",
+              "Distribuição de potência",
+            ],
+            answerIndex: 0,
+          };
+        }
+        if (tl.includes("resistor")) {
+          return {
+            question: "Qual é a função de um resistor?",
+            options: [
+              "Opor-se à passagem de corrente elétrica",
+              "Armazenar carga elétrica",
+              "Converter corrente em luz",
+              "Oscilar sinal AC",
+            ],
+            answerIndex: 0,
+          };
+        }
+        if (tl.includes("capacitor")) {
+          return {
+            question: "O que um capacitor armazena?",
+            options: [
+              "Carga elétrica",
+              "Calor",
+              "Som",
+              "Pressão",
+            ],
+            answerIndex: 0,
+          };
+        }
+        if (tl.includes("diodo")) {
+          return {
+            question: "Qual é a característica principal de um diodo?",
+            options: [
+              "Permitir corrente em um sentido e bloquear no outro",
+              "Aumentar a tensão de entrada",
+              "Oscilar a frequência de sinal",
+              "Armazenar energia magnética",
+            ],
+            answerIndex: 0,
+          };
+        }
+        if (tl.includes("transistor")) {
+          return {
+            question: "Para que serve um transistor em um circuito?",
+            options: [
+              "Amplificar ou chavear sinais",
+              "Armazenar energia como um capacitor",
+              "Medir resistência",
+              "Converter AC em DC",
+            ],
+            answerIndex: 0,
+          };
+        }
+        if (tl.includes("série") || tl.includes("paralelo")) {
+          return {
+            question: "Em circuito série, como é a corrente em todos os componentes?",
+            options: [
+              "É a mesma em todos",
+              "Varia aleatoriamente",
+              "Zera após o primeiro",
+              "Depende apenas da tensão",
+            ],
+            answerIndex: 0,
+          };
+        }
+      }
       if (tl.includes("jsx")) {
         return {
           question: "O que é JSX no React?",
@@ -746,14 +989,26 @@ async function generateAiQuestionsForCourse(courseId: number) {
           answerIndex: 0,
         };
       }
-      // genérico mas direto
+      // genérico porém factual simples (evitar meta-pergunta)
+      if (tl.includes("conceito") || tl.includes("introdução") || tl.includes("fundamentos")) {
+        return {
+          question: `Qual é a definição correta de ${t}?`,
+          options: [
+            `${t} é explicado de forma objetiva no curso`,
+            `${t} é um protocolo de rede avançado`,
+            `${t} é apenas um estilo visual`,
+            `${t} é um erro comum de compilação`,
+          ],
+          answerIndex: 0,
+        };
+      }
       return {
-        question: `Qual opção descreve corretamente o tópico: ${t}?`,
+        question: `O que significa ${t}?`,
         options: [
-          `Explicação simples e objetiva sobre ${t} no contexto do curso`,
-          `Afirmação sem relação com ${t}`,
-          `Ideia que contradiz o curso`,
-          `Informação genérica sem utilidade prática`,
+          `${t} tem a definição apresentada nas aulas`,
+          `${t} é uma cor em CSS`,
+          `${t} é um comando do terminal`,
+          `${t} é um arquivo de imagem`,
         ],
         answerIndex: 0,
       };
@@ -785,6 +1040,19 @@ app.get("/exam/:courseId", rateLimit({ windowMs: 60_000, max: 20 }), async (req,
   const courseId = Number(req.params.courseId);
   const course = (await db.select().from(courses).where(eq(courses.id, courseId)))[0];
   if (!course) return res.status(404).send("Curso não encontrado");
+  // Bloqueio: só libera a prova quando todo curso estiver concluído (sessão atual)
+  const cookies = (req as any).cookies || {};
+  let sessionId = cookies["cp_session"];
+  if (!sessionId) {
+    sessionId = Math.random().toString(36).slice(2) + Date.now();
+    res.cookie("cp_session", sessionId, { httpOnly: false });
+  }
+  const vids = await db.select().from(courseVideos).where(eq(courseVideos.courseId, courseId));
+  const progRows = await db.select().from(progress).where(and(eq(progress.courseId, courseId), eq(progress.sessionId, sessionId)));
+  const completedCount = progRows.filter(p => Number(p.completed) === 1 || p.completed === true).length;
+  if (vids.length > 0 && completedCount < vids.length) {
+    return res.status(403).render("exam_blocked", { course, total: vids.length, completed: completedCount });
+  }
   const full = await generateAiQuestionsForCourse(courseId);
   full.sort(() => Math.random() - 0.5);
   res.render("exam", { course, questions: full });
@@ -824,8 +1092,9 @@ app.post("/exam/:courseId", rateLimit({ windowMs: 60_000, max: 30 }), async (req
     const isCorrect = Number.isFinite(selected) && correctOpt && selected === (correctOpt.id as number);
     if (isCorrect) correctCount++;
   }
-  const scorePercent = Math.round((correctCount / Math.max(qIds.length, 1)) * 100);
-  const approved = scorePercent >= (course.minScorePercent as number);
+  const rawPercent = (correctCount / Math.max(qIds.length, 1)) * 100;
+  const scorePercent = Math.floor(rawPercent);
+  const approved = rawPercent >= 50;
   const examIns = await db.insert(exams).values({ studentId: student.id as number, courseId, scorePercent, approved, ip: req.ip }).returning({ id: exams.id });
   const examId = examIns[0].id as number;
   // Save answers
@@ -849,6 +1118,9 @@ app.post("/payment/create", rateLimit({ windowMs: 60_000, max: 10 }), async (req
   if (!exam) return res.status(400).send("Exame inválido");
   const course = (await db.select().from(courses).where(eq(courses.id, Number(exam.courseId))))[0];
   if (!course || !stripe) return res.status(400).send("Pagamento indisponível");
+  if ((exam.scorePercent as number) < 50) {
+    return res.status(403).send("Certificado disponível apenas após concluir a prova com acerto de pelo menos 50%.");
+  }
 
   const commissionPercent = (await db.select().from(creators).where(eq(creators.id, course.creatorId)))[0]?.commissionPercent ?? 20;
   const gross = course.priceCents as number;
@@ -897,6 +1169,9 @@ app.post("/payment/create-mp", rateLimit({ windowMs: 60_000, max: 10 }), async (
     if (!exam) return res.status(400).send("Exame inválido");
     const course = (await db.select().from(courses).where(eq(courses.id, Number(exam.courseId))))[0];
     if (!course) return res.status(404).send("Curso não encontrado");
+    if ((exam.scorePercent as number) < 50) {
+      return res.status(403).send("Certificado disponível apenas após concluir a prova com acerto de pelo menos 50%.");
+    }
 
     const gross = course.priceCents as number;
     const fee = Math.round((gross * 20) / 100);
@@ -941,72 +1216,100 @@ app.post("/payment/create-mp", rateLimit({ windowMs: 60_000, max: 10 }), async (
 
 // Pagamento direto para certificado (sem exame)
 app.post("/payment/create-direct", rateLimit({ windowMs: 60_000, max: 10 }), async (req, res) => {
-  const { courseId, student_name, student_email } = req.body as { courseId: number; student_name?: string; student_email?: string };
-  const course = (await db.select().from(courses).where(eq(courses.id, Number(courseId))))[0];
-  if (!course) return res.status(404).send("Curso não encontrado");
-  if (!student_name || !student_email) return res.status(400).send("Informe nome e e-mail");
-  let student = (await db.select().from(students).where(eq(students.email, student_email)))[0];
-  if (!student) {
-    const hash = await bcrypt.hash(`${Date.now()}-${student_email}`, 10);
-    const ins = await db.insert(students).values({ name: student_name, email: student_email, passwordHash: hash }).returning({ id: students.id });
-    student = { id: ins[0].id } as any;
+  try {
+    if (!stripe) return res.status(400).json({ error: "Stripe não configurado" });
+    const { courseId, name, email } = req.body as { courseId: number; name: string; email: string };
+    const course = (await db.select().from(courses).where(eq(courses.id, Number(courseId))))[0];
+    if (!course) return res.status(404).json({ error: "Curso não encontrado" });
+
+    // Progresso: exigir conclusão
+    const cookies = (req as any).cookies || {};
+    let sessionId = cookies["cp_session"];
+    if (!sessionId) {
+      sessionId = Math.random().toString(36).slice(2) + Date.now();
+      res.cookie("cp_session", sessionId, { httpOnly: false });
+    }
+    const vids = await db.select().from(courseVideos).where(eq(courseVideos.courseId, course.id as number));
+    const progRows = await db.select().from(progress).where(and(eq(progress.courseId, course.id as number), eq(progress.sessionId, sessionId)));
+    const completedCount = progRows.filter(p => Number(p.completed) === 1 || p.completed === true).length;
+    if (vids.length > 0 && completedCount < vids.length) {
+      return res.status(403).json({ error: "Certificado bloqueado: conclua todas as aulas para emitir.", total: vids.length, completed: completedCount });
+    }
+
+    const studentEmail = String(email||'').trim();
+    const studentName = String(name||'').trim();
+    if (!studentName || !studentEmail) return res.status(400).json({ error: "Informe nome e e-mail" });
+    let student = (await db.select().from(students).where(eq(students.email, studentEmail)))[0];
+    if (!student) {
+      const hash = await bcrypt.hash(`${Date.now()}-${studentEmail}`, 10);
+      const ins = await db.insert(students).values({ name: studentName, email: studentEmail, passwordHash: hash }).returning({ id: students.id });
+      student = { id: ins[0].id } as any;
+    }
+
+    const gross = course.priceCents as number;
+    const fee = Math.round((gross * 20) / 100);
+    const net = gross - fee;
+
+    const trxIns = await db.insert(transactions).values({
+      courseId: course.id as number,
+      creatorId: course.creatorId as number,
+      studentId: student.id as number,
+      grossCents: gross,
+      platformFeeCents: fee,
+      netCents: net,
+      provider: "stripe",
+      status: "pending",
+    }).returning({ id: transactions.id });
+    const transactionId = trxIns[0].id as number;
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [{
+        price_data: { currency: "brl", product_data: { name: `Certificado: ${course.title}` }, unit_amount: gross },
+        quantity: 1,
+      }],
+      success_url: `${process.env.PUBLIC_URL || "http://localhost:3000"}/payment/success?transactionId=${transactionId}`,
+      cancel_url: `${process.env.PUBLIC_URL || "http://localhost:3000"}/payment/cancel`,
+      metadata: { transactionId: String(transactionId), courseId: String(course.id), studentId: String(student.id), scorePercent: "100" },
+    });
+
+    await db.update(transactions).set({ providerPaymentId: session.id }).where(eq(transactions.id, transactionId));
+    res.json({ url: session.url });
+  } catch (e) {
+    res.status(500).json({ error: `Erro ao iniciar pagamento: ${(e as Error).message}` });
   }
-
-  const gross = course.priceCents as number;
-  const fee = Math.round((gross * 20) / 100);
-  const net = gross - fee;
-
-  const trxIns = await db.insert(transactions).values({
-    courseId: course.id as number,
-    creatorId: course.creatorId as number,
-    studentId: student.id as number,
-    grossCents: gross,
-    platformFeeCents: fee,
-    netCents: net,
-    provider: stripe ? "stripe" : "manual",
-    status: gross > 0 ? "pending" : "paid",
-  }).returning({ id: transactions.id });
-  const transactionId = trxIns[0].id as number;
-
-  if (gross === 0 || !stripe) {
-    await db.update(transactions).set({ status: "paid" }).where(eq(transactions.id, transactionId));
-    await generateCertificate({ id: transactionId, studentId: student.id, courseId: course.id, creatorId: course.creatorId }, 100);
-    return res.json({ url: `${process.env.PUBLIC_URL || "http://localhost:3000"}/payment/success?transactionId=${transactionId}` });
-  }
-
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    payment_method_types: ["card"],
-    line_items: [{
-      price_data: {
-        currency: "brl",
-        product_data: { name: `Certificado: ${course.title}` },
-        unit_amount: gross,
-      },
-      quantity: 1,
-    }],
-    success_url: `${process.env.PUBLIC_URL || "http://localhost:3000"}/payment/success?transactionId=${transactionId}`,
-    cancel_url: `${process.env.PUBLIC_URL || "http://localhost:3000"}/payment/cancel`,
-    metadata: { transactionId: String(transactionId), courseId: String(course.id), studentId: String(student.id), scorePercent: String(100) },
-  });
-
-  await db.update(transactions).set({ providerPaymentId: session.id }).where(eq(transactions.id, transactionId));
-
-  res.json({ url: session.url });
 });
 
 // Payment via Mercado Pago (direct, without exam)
 app.post("/payment/create-direct-mp", rateLimit({ windowMs: 60_000, max: 10 }), async (req, res) => {
   try {
-    if (!mpPref) return res.status(400).send("Mercado Pago não configurado");
-    const { courseId, student_name, student_email } = req.body as { courseId: number; student_name?: string; student_email?: string };
+    if (!mpPref) return res.status(400).json({ error: "Mercado Pago não configurado" });
+    const { courseId, name, email } = req.body as { courseId: number; name: string; email: string };
     const course = (await db.select().from(courses).where(eq(courses.id, Number(courseId))))[0];
-    if (!course) return res.status(404).send("Curso não encontrado");
-    if (!student_name || !student_email) return res.status(400).send("Informe nome e e-mail");
-    let student = (await db.select().from(students).where(eq(students.email, student_email)))[0];
+    if (!course) return res.status(404).json({ error: "Curso não encontrado" });
+
+    // Progresso: exigir conclusão
+    const cookies = (req as any).cookies || {};
+    let sessionId = cookies["cp_session"];
+    if (!sessionId) {
+      sessionId = Math.random().toString(36).slice(2) + Date.now();
+      res.cookie("cp_session", sessionId, { httpOnly: false });
+    }
+    const vids = await db.select().from(courseVideos).where(eq(courseVideos.courseId, course.id as number));
+    const progRows = await db.select().from(progress).where(and(eq(progress.courseId, course.id as number), eq(progress.sessionId, sessionId)));
+    const completedCount = progRows.filter(p => Number(p.completed) === 1 || p.completed === true).length;
+    if (vids.length > 0 && completedCount < vids.length) {
+      return res.status(403).json({ error: "Certificado bloqueado: conclua todas as aulas para emitir.", total: vids.length, completed: completedCount });
+    }
+
+    const studentEmail = String(email||'').trim();
+    const studentName = String(name||'').trim();
+    if (!studentName || !studentEmail) return res.status(400).json({ error: "Informe nome e e-mail" });
+    let student = (await db.select().from(students).where(eq(students.email, studentEmail)))[0];
     if (!student) {
-      const hash = await bcrypt.hash(`${Date.now()}-${student_email}`, 10);
-      const ins = await db.insert(students).values({ name: student_name, email: student_email, passwordHash: hash }).returning({ id: students.id });
+      const hash = await bcrypt.hash(`${Date.now()}-${studentEmail}`, 10);
+      const ins = await db.insert(students).values({ name: studentName, email: studentEmail, passwordHash: hash }).returning({ id: students.id });
       student = { id: ins[0].id } as any;
     }
 
@@ -1022,15 +1325,9 @@ app.post("/payment/create-direct-mp", rateLimit({ windowMs: 60_000, max: 10 }), 
       platformFeeCents: fee,
       netCents: net,
       provider: "mercadopago",
-      status: gross > 0 ? "pending" : "paid",
+      status: "pending",
     }).returning({ id: transactions.id });
     const transactionId = trxIns[0].id as number;
-
-    if (gross === 0) {
-      await db.update(transactions).set({ status: "paid" }).where(eq(transactions.id, transactionId));
-      await generateCertificate({ id: transactionId, studentId: student.id, courseId: course.id, creatorId: course.creatorId }, 100);
-      return res.json({ url: `${process.env.PUBLIC_URL || "http://localhost:3000"}/payment/success?transactionId=${transactionId}` });
-    }
 
     const pref = await mpPref.create({
       body: {
@@ -1043,8 +1340,7 @@ app.post("/payment/create-direct-mp", rateLimit({ windowMs: 60_000, max: 10 }), 
         auto_return: "approved",
         notification_url: `${process.env.PUBLIC_URL || "http://localhost:3000"}/payment/webhook-mp`,
         external_reference: String(transactionId),
-        metadata: { transactionId: String(transactionId), courseId: String(course.id), studentId: String(student.id), scorePercent: String(100) },
-        payer: { email: student_email },
+        metadata: { transactionId: String(transactionId), courseId: String(course.id), studentId: String(student.id), scorePercent: "100" },
       }
     });
 
@@ -1053,7 +1349,7 @@ app.post("/payment/create-direct-mp", rateLimit({ windowMs: 60_000, max: 10 }), 
     res.json({ url });
   } catch (e) {
     console.error(e);
-    res.status(500).send("Erro ao criar preferência no Mercado Pago");
+    res.status(500).json({ error: "Erro ao criar preferência no Mercado Pago" });
   }
 });
 
@@ -1088,15 +1384,16 @@ app.post("/certificate/preview", rateLimit({ windowMs: 60_000, max: 10 }), async
     const transactionId = trxIns[0].id as number;
 
     const score = Number.isFinite(Number(scorePercent)) ? Number(scorePercent) : 100;
-    await generateCertificate({ id: transactionId, studentId: student.id, courseId: course.id, creatorId: course.creatorId, overrideStudentName: (display_student_name || name), overrideCourseTitle: (display_course_title || course.title), overrideCertificateConfig: certificateConfig || {} }, score);
+    const certStd = await generateCertificate({ id: transactionId, studentId: student.id, courseId: course.id, creatorId: course.creatorId, overrideStudentName: (display_student_name || name), overrideCourseTitle: (display_course_title || course.title), overrideCertificateConfig: certificateConfig || {} }, score);
+    const certA3 = await generateCertificate({ id: transactionId, studentId: student.id, courseId: course.id, creatorId: course.creatorId, overrideStudentName: (display_student_name || name), overrideCourseTitle: (display_course_title || course.title), overrideCertificateConfig: { ...(certificateConfig || {}), size: 'A3' } }, score);
 
-    const cert = (await db.select().from(certificates).where(eq(certificates.transactionId, transactionId)))[0];
-    if (!cert) return res.status(500).json({ error: "Falha ao gerar certificado" });
-    const code = cert.code as string;
+    const code = certStd.code as string;
     const validateUrl = `${process.env.PUBLIC_URL || "http://localhost:3000"}/certificate/${code}`;
-    const pdfName = path.basename(String(cert.pdfPath));
-    const pdfUrl = `${process.env.PUBLIC_URL || "http://localhost:3000"}/certificados/${pdfName}`;
-    res.json({ ok: true, code, validateUrl, pdfUrl });
+    const pdfUrl = `${process.env.PUBLIC_URL || "http://localhost:3000"}/certificados/${path.basename(String(certStd.pdfPath))}`;
+    const codeA3 = certA3.code as string;
+    const validateUrlA3 = `${process.env.PUBLIC_URL || "http://localhost:3000"}/certificate/${codeA3}`;
+    const pdfUrlA3 = `${process.env.PUBLIC_URL || "http://localhost:3000"}/certificados/${path.basename(String(certA3.pdfPath))}`;
+    res.json({ ok: true, code, validateUrl, pdfUrl, codeA3, validateUrlA3, pdfUrlA3 });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erro ao gerar certificado de teste" });
@@ -1117,8 +1414,9 @@ app.post("/payment/webhook", express.raw({ type: "application/json" }), async (r
       if (!trx) return res.json({ ok: true });
       // mark paid
       await db.update(transactions).set({ status: "paid" }).where(eq(transactions.id, transactionId));
-      // generate certificate
+      // generate certificates (A4 padrão e A3)
       await generateCertificate(trx, Number(session.metadata?.scorePercent));
+      await generateCertificate({ ...trx, overrideCertificateConfig: { size: 'A3' } }, Number(session.metadata?.scorePercent));
     }
 
     res.json({ received: true });
@@ -1147,6 +1445,7 @@ app.post("/payment/webhook-mp", async (req, res) => {
       await db.update(transactions).set({ status: "paid" }).where(eq(transactions.id, externalRef));
       const scorePercent = Number((payment.metadata as any)?.scorePercent) || 100;
       await generateCertificate(trx, scorePercent);
+      await generateCertificate({ ...trx, overrideCertificateConfig: { size: 'A3' } }, scorePercent);
     }
     res.json({ received: true });
   } catch (e) {
@@ -1155,24 +1454,14 @@ app.post("/payment/webhook-mp", async (req, res) => {
   }
 });
 
-async function generateCertificate(trx: any, scorePercent: number) {
+async function generateCertificate(trx: any, scorePercent: number): Promise<{ code: string; pdfPath: string }> {
   const student = (await db.select().from(students).where(eq(students.id, trx.studentId)))[0];
   const course = (await db.select().from(courses).where(eq(courses.id, trx.courseId)))[0];
   const creator = (await db.select().from(creators).where(eq(creators.id, trx.creatorId)))[0];
   const code = Math.random().toString(36).slice(2, 10);
   const pdfPath = path.join(process.cwd(), "certificados", `${code}.pdf`);
-
-  const doc = new PDFDocument({ size: "A4", margin: 50, layout: "portrait" });
-  const stream = fs.createWriteStream(pdfPath);
-  doc.pipe(stream);
-  // Fundo dark incondicional para evitar visual antigo em templates não-pro
-  try {
-    doc.save();
-    doc.rect(0, 0, doc.page.width, doc.page.height).fill('#0f0f0f');
-    doc.restore();
-  } catch {}
-  // Força o uso do template profissional 21 para padronizar o visual dark
-  const templateId = 21;
+  // Template padrão: clássico claro (id 30)
+  const templateId = 30;
   let styles: any = getTemplateStyles(templateId);
   // Apply overrides from course configuration (JSON) e do preview
   let cfg: any = {};
@@ -1183,6 +1472,40 @@ async function generateCertificate(trx: any, scorePercent: number) {
   if (previewCfg && typeof previewCfg === 'object') {
     cfg = { ...cfg, ...previewCfg };
   }
+
+  // Orientação: permitir configurar via `layout` (portrait|landscape) ou `orientation` (vertical|horizontal)
+  let layout: "portrait" | "landscape" = "landscape"; // padrão mais comum em certificados
+  const layoutRaw = (cfg && typeof cfg.layout === 'string') ? String(cfg.layout).toLowerCase() : null;
+  const orientRaw = (cfg && typeof cfg.orientation === 'string') ? String(cfg.orientation).toLowerCase() : null;
+  if (layoutRaw) {
+    if (layoutRaw.startsWith('p')) layout = "portrait";
+    else if (layoutRaw.startsWith('l')) layout = "landscape";
+  } else if (orientRaw) {
+    if (orientRaw.includes('vertical') || orientRaw.startsWith('p')) layout = "portrait";
+    else if (orientRaw.includes('horizontal') || orientRaw.startsWith('l')) layout = "landscape";
+  }
+
+  // Tamanho base (A4/A3) com orientação configurável (portrait/landscape)
+  const A4W = 595; // pts (~210mm)
+  const A4H = 842; // pts (~297mm)
+  const A3W = 842; // pts (~297mm)
+  const A3H = 1191; // pts (~420mm)
+  const baseSizeRaw = ((cfg && ((cfg as any).size || (cfg as any).paperSize)) ? String(((cfg as any).size || (cfg as any).paperSize)).toUpperCase() : "A4");
+  const baseSize = baseSizeRaw === 'A3' ? 'A3' : 'A4';
+  const ratioRaw = (cfg && typeof (cfg as any).pageHeightRatio === 'number') ? Number((cfg as any).pageHeightRatio) : NaN;
+  const pageHeightRatio = Number.isFinite(ratioRaw) && ratioRaw > 0.1 && ratioRaw <= 1 ? ratioRaw : 1;
+  let doc: PDFKit.PDFDocument;
+  if (pageHeightRatio !== 1) {
+    const wBase = baseSize === 'A3' ? A3W : A4W;
+    const hBase = baseSize === 'A3' ? A3H : A4H;
+    const widthPts = layout === 'portrait' ? wBase : hBase;
+    const heightPts = layout === 'portrait' ? Math.round(hBase * pageHeightRatio) : Math.round(wBase * pageHeightRatio);
+    doc = new PDFDocument({ size: [widthPts, heightPts], margin: 50 });
+  } else {
+    doc = new PDFDocument({ size: baseSize, margin: 50, layout });
+  }
+  const stream = fs.createWriteStream(pdfPath);
+  doc.pipe(stream);
   styles = {
     ...styles,
     ...(cfg.headerColor ? { headerColor: cfg.headerColor } : {}),
@@ -1209,7 +1532,37 @@ async function generateCertificate(trx: any, scorePercent: number) {
   // Branding padrão: You Certificados
   if (!styles.title) styles.title = 'You Certificados';
   // Background/header
-  if (styles.pro) {
+  if ((styles as any).classic) {
+    // Fundo claro e moldura clássica
+    doc.save();
+    doc.rect(0, 0, doc.page.width, doc.page.height).fill(styles.bgColor || '#ffffff');
+    doc.restore();
+
+    // Moldura dupla clássica (preto/vermelho)
+    doc.save();
+    doc.lineWidth(2).strokeColor(styles.borderColor || '#000000');
+    doc.rect(30, 30, doc.page.width - 60, doc.page.height - 60).stroke();
+    doc.lineWidth(1).strokeColor(styles.borderInnerColor || '#d00000');
+    doc.rect(40, 40, doc.page.width - 80, doc.page.height - 80).stroke();
+    doc.restore();
+
+    // Cabeçalho central
+    try { doc.font('Times-Roman'); } catch {}
+    doc.fillColor(styles.textColor || '#0f0f0f');
+    try { doc.font('Helvetica-Bold'); } catch {}
+    doc.fontSize(32).text(styles.headerTitle || 'CERTIFICADO', 0, 70, { align: 'center' });
+    try { doc.font('Times-Roman'); } catch {}
+    doc.fillColor(styles.mutedColor || '#606060').fontSize(12).text(styles.subtitle || 'de Conclusão', 0, 106, { align: 'center' });
+
+    // Logo opcional
+    try {
+      if ((cfg as any)?.logoPath) {
+        const pLogo = path.join(process.cwd(), String(cfg.logoPath).replace(/^\//, ''));
+        doc.image(pLogo, 52, 52, { fit: [64, 64] });
+      }
+    } catch {}
+
+  } else if (styles.pro) {
     // Fundo escuro conforme paleta do sistema
     doc.save();
     doc.rect(0, 0, doc.page.width, doc.page.height).fill(styles.bgColor || '#0f0f0f'); // --bg
@@ -1226,12 +1579,12 @@ async function generateCertificate(trx: any, scorePercent: number) {
     // Cabeçalho minimalista em card dark com logo e acento
     doc.save();
     doc.rect(0, 0, doc.page.width, 90).fill(styles.cardColor || '#181818'); // --card
-    // Logo vetorial estilo plataforma (play dentro de pill vermelho)
+    // Logo do usuário, se configurado (evitar ícones semelhantes ao Google)
     try {
-      const lx = 24, ly = 28, lw = 36, lh = 24;
-      doc.roundedRect(lx, ly, lw, lh, 4).fill(styles.accentColor || '#ff0000'); // --accent
-      doc.fillColor(styles.textColor || '#ffffff');
-      doc.polygon([lx + 14, ly + 6], [lx + 14, ly + lh - 6], [lx + lw - 8, ly + lh / 2]).fill();
+      if (cfg?.logoPath) {
+        const pLogo = path.join(process.cwd(), String(cfg.logoPath).replace(/^\//, ''));
+        doc.image(pLogo, 20, 22, { fit: [60, 60] });
+      }
     } catch {}
     // Título do cabeçalho
     doc.fillColor(styles.textColor || '#f1f1f1'); // --text
@@ -1283,7 +1636,34 @@ async function generateCertificate(trx: any, scorePercent: number) {
   const displayStudentName = (trx as any).overrideStudentName || String(student.name);
   const displayCourseTitle = (trx as any).overrideCourseTitle || String((cfg?.canonicalCourseTitle || course.title));
   const displayChannelName = String(cfg?.channelName || '').trim();
-  if (styles.pro) {
+  if ((styles as any).classic) {
+    const align = styles.align || 'center';
+    try { doc.font('Times-Roman'); } catch {}
+    doc.fillColor(styles.mutedColor || '#606060').fontSize(16).text('Certificamos que', { align });
+    doc.moveDown(0.5);
+    try { doc.font('Helvetica-Bold'); } catch {}
+    doc.fillColor(styles.textColor || '#0f0f0f').fontSize(28).text(displayStudentName, { align });
+    doc.moveDown(0.5);
+    try { doc.font('Times-Roman'); } catch {}
+    doc.fillColor(styles.mutedColor || '#606060').fontSize(16).text('concluiu com êxito', { align });
+    doc.moveDown(0.3);
+    try { doc.font('Helvetica-Bold'); } catch {}
+    doc.fillColor(styles.textColor || '#0f0f0f').fontSize(20).text(displayCourseTitle, { align });
+    if (displayChannelName) {
+      doc.moveDown(0.3);
+      try { doc.font('Times-Roman'); } catch {}
+      doc.fillColor(styles.mutedColor || '#606060').fontSize(12).text(`Canal: ${displayChannelName}`, { align });
+    }
+    // Instituição emissora (destaque)
+    try { doc.font('Helvetica-Bold'); } catch {}
+    doc.fillColor(styles.accentColor || '#d00000').fontSize(12).text('Emitido por You Certificados', { align });
+    const emitDate = new Date().toLocaleDateString('pt-BR');
+    doc.moveDown(0.8);
+    try { doc.font('Times-Roman'); } catch {}
+    doc.fillColor(styles.mutedColor || '#606060').fontSize(12).text(`Emitido em ${emitDate}`, { align });
+    doc.moveDown(0.3);
+    doc.fillColor(styles.mutedColor || '#606060').fontSize(11).text(`Código de validação: ${code}`, { align });
+  } else if (styles.pro) {
     const align = styles.align || 'center';
     // Se houver bodyTextPro, usa frase personalizada (com tokens)
     if (cfg?.bodyTextPro) {
@@ -1317,7 +1697,10 @@ async function generateCertificate(trx: any, scorePercent: number) {
       doc.moveDown(0.9);
     }
     const emitDate = new Date().toLocaleDateString('pt-BR');
-    try { doc.font('Times-Roman'); } catch {}
+    // Instituição emissora (destaque)
+    try { doc.font('Helvetica-Bold'); } catch {}
+    doc.fillColor(styles.textColor || '#f1f1f1').fontSize(12).text('Emitido por You Certificados', { align });
+    doc.moveDown(0.3);
     doc.fillColor(styles.mutedColor || '#aaaaaa').fontSize(12).text(`Emitido em ${emitDate}`, { align }); // --muted
     doc.moveDown(0.5);
     doc.fillColor(styles.mutedColor || '#aaaaaa').fontSize(11).text(`Código de validação: ${code}`, { align });
@@ -1327,7 +1710,7 @@ async function generateCertificate(trx: any, scorePercent: number) {
   } else {
     doc.fontSize(14);
     // Padrão sem nota: não exibir pontuação
-    const defaultBody = `YOU CERTIFICADOS CERTIFICA O ALUNO TAL: ${displayStudentName}. Curso: ${displayCourseTitle}${displayChannelName ? `. Canal: ${displayChannelName}` : ''}. Data: ${new Date().toLocaleDateString('pt-BR')}. Código: ${code}.`;
+    const defaultBody = `You Certificados certifica o aluno: ${displayStudentName}. Curso: ${displayCourseTitle}${displayChannelName ? `. Canal: ${displayChannelName}` : ''}. Data: ${new Date().toLocaleDateString('pt-BR')}. Código: ${code}.`;
     const bodyTemplate = cfg?.bodyText || defaultBody;
     const body = String(bodyTemplate)
       .replaceAll('{studentName}', displayStudentName)
@@ -1342,7 +1725,7 @@ async function generateCertificate(trx: any, scorePercent: number) {
   }
 
   // Marca d'água suave (You Certificados) desativada no template profissional
-  if (!styles.pro) {
+  if (!styles.pro && !(styles as any).classic) {
     try {
       doc.save();
       doc.fillColor(styles.accentColor || '#FF0000');
@@ -1359,10 +1742,10 @@ async function generateCertificate(trx: any, scorePercent: number) {
   const qrBuf = Buffer.from(qrBase64, "base64");
   if (styles.qrRight) {
     const fit = styles.pro ? [98, 98] : [120, 120];
-    const x = styles.pro ? (doc.page.width - 150) : (doc.page.width - 170);
+    const x = styles.pro ? (doc.page.width - 150) : (doc.page.width - 204);
     const y = styles.pro ? (doc.page.height - 190) : (doc.page.height - 220);
     doc.image(qrBuf, x, y, { fit });
-    if (styles.pro) {
+    if (styles.pro || (styles as any).classic) {
       try { doc.font('Times-Roman'); } catch {}
       doc.fillColor(styles.mutedColor || '#aaaaaa').fontSize(9).text('Escaneie para validar', x - 8, y + (fit[1] as number) + 8, { width: 120, align: 'center' });
     }
@@ -1371,7 +1754,21 @@ async function generateCertificate(trx: any, scorePercent: number) {
   }
 
   // Assinatura
-  if (styles.pro) {
+  if ((styles as any).classic) {
+    const sigY = doc.page.height - 150;
+    doc.strokeColor(styles.borderColor || '#d4af37').lineWidth(1);
+    doc.moveTo(70, sigY).lineTo(doc.page.width / 2 - 40, sigY).stroke();
+    if (cfg?.signaturePath) {
+      const pSig = path.join(process.cwd(), String(cfg.signaturePath).replace(/^\//, ''));
+      try { doc.image(pSig, 70, sigY - 46, { fit: [160, 48] }); } catch {}
+    }
+    if (cfg?.signatureName) {
+      try { doc.font('Times-Roman'); } catch {}
+      doc.fillColor(styles.textColor || '#0f0f0f').fontSize(12).text(String(cfg.signatureName), 70, sigY - 18, { align: 'left' });
+    }
+    try { doc.font('Times-Roman'); } catch {}
+    doc.fillColor(styles.mutedColor || '#606060').fontSize(10).text('Assinatura do responsável', 70, sigY + 6, { align: 'left' });
+  } else if (styles.pro) {
     const sigY = doc.page.height - 140;
     doc.strokeColor(styles.borderColor || 'rgba(255,255,255,0.08)').lineWidth(1); // --border
     doc.moveTo(70, sigY).lineTo(doc.page.width / 2 - 40, sigY).stroke();
@@ -1392,7 +1789,7 @@ async function generateCertificate(trx: any, scorePercent: number) {
     doc.text(cfg.signatureName, { align: styles.align || (styles.centered ? 'center' : 'left') });
   }
   // Optional logo (local path under /public)
-  if (cfg?.logoPath) {
+  if (cfg?.logoPath && !styles.pro) {
     const p = path.join(process.cwd(), cfg.logoPath.replace(/^\//, ''));
     try {
       doc.image(p, 50, 90, { fit: [80, 80] });
@@ -1422,6 +1819,7 @@ async function generateCertificate(trx: any, scorePercent: number) {
   });
 
   await db.insert(certificates).values({ transactionId: trx.id, code, pdfPath, studentId: trx.studentId, courseId: trx.courseId, scorePercent });
+  return { code, pdfPath };
 }
 
 function getTemplateStyles(id: number) {
@@ -1447,7 +1845,9 @@ function getTemplateStyles(id: number) {
     19: { headerColor: '#e11d48', headerTextColor: '#fff', title: 'Certificado' },
     20: { headerColor: '#3b82f6', headerTextColor: '#fff', title: 'Certificado', qrRight: true },
     // Template profissional
-    21: { title: 'Certificado', centered: true, qrRight: true, align: 'center', pro: true, sealColor: '#dc2626' }
+    21: { title: 'Certificado', centered: true, qrRight: true, align: 'center', pro: true, sealColor: '#dc2626' },
+    // Template clássico claro
+    30: { title: 'Certificado', headerTitle: 'CERTIFICADO', subtitle: 'de Conclusão', centered: true, qrRight: true, align: 'center', classic: true, bgColor: '#ffffff', textColor: '#0f0f0f', mutedColor: '#606060', borderColor: '#000000', borderInnerColor: '#d00000', accentColor: '#d00000' }
   };
   return presets[id] || presets[21];
 }

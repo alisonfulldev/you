@@ -2,23 +2,17 @@
   <div class="card">
     <h2>Gerar Certificado</h2>
     <p class="muted">
-      <% if (typeof scorePercent !== 'undefined') { %>
-        Você foi aprovado com <strong><%= scorePercent %>%</strong>. Conclua o pagamento para gerar seu certificado.
-      <% } else { %>
-        Conclua o pagamento para gerar seu certificado.
-      <% } %>
+      Conclua o curso e finalize o pagamento para gerar seu certificado.
     </p>
+    <div class="grid" style="display:grid;grid-template-columns:1fr;gap:8px;margin:10px 0 16px;">
+      <label style="display:block">Nome completo</label>
+      <input class="input" id="student_name" placeholder="Seu nome" />
+      <label style="display:block">E-mail</label>
+      <input class="input" id="student_email" placeholder="voce@exemplo.com" type="email" />
+    </div>
     <div class="pay-actions">
-      <% if (typeof examId === 'undefined') { %>
-        <div class="form-grid" style="margin-bottom:12px;">
-          <input type="text" id="student_name" placeholder="Seu nome" />
-          <input type="email" id="student_email" placeholder="Seu e-mail" />
-        </div>
-      <% } %>
-      <div class="form-grid" style="margin-bottom:12px;">
-        <input type="text" id="display_student_name" placeholder="Nome no certificado (opcional)" />
-        <input type="text" id="display_course_title" placeholder="Nome do curso no certificado (opcional)" />
-      </div>
+      
+      
       <div class="row" style="gap:8px;">
         <button class="btn gradient large" id="payStripe">Pagar com Stripe</button>
         <button class="btn pill large" id="payMP">Pagar com Mercado Pago</button>
@@ -29,57 +23,47 @@
 </section>
 <script>
   document.getElementById('payStripe').addEventListener('click', async () => {
-    <% if (typeof examId !== 'undefined') { %>
-    const res = await fetch('/payment/create', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ examId: <%= examId %> })
-    });
-    <% } else { %>
-    const name = document.getElementById('student_name').value.trim();
-    const email = document.getElementById('student_email').value.trim();
-    if (!name || !email) { alert('Informe nome e e-mail'); return; }
+    const nameEl = document.getElementById('student_name');
+    const emailEl = document.getElementById('student_email');
+    const name = (nameEl?.value || '').trim();
+    const email = (emailEl?.value || '').trim();
+    if (!name) { alert('Informe seu nome'); return; }
+    if (!email) { alert('Informe seu e-mail'); return; }
     const res = await fetch('/payment/create-direct', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ courseId: <%= course.id %>, student_name: name, student_email: email })
+      body: JSON.stringify({ courseId: <%= course.id %>, name, email })
     });
-    <% } %>
     const data = await res.json();
     if (data.url) { window.location.href = data.url; }
   });
 
   document.getElementById('payMP').addEventListener('click', async () => {
-    <% if (typeof examId !== 'undefined') { %>
-    const res = await fetch('/payment/create-mp', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ examId: <%= examId %> })
-    });
-    <% } else { %>
-    const name = document.getElementById('student_name').value.trim();
-    const email = document.getElementById('student_email').value.trim();
-    if (!name || !email) { alert('Informe nome e e-mail'); return; }
+    const nameEl = document.getElementById('student_name');
+    const emailEl = document.getElementById('student_email');
+    const name = (nameEl?.value || '').trim();
+    const email = (emailEl?.value || '').trim();
+    if (!name) { alert('Informe seu nome'); return; }
+    if (!email) { alert('Informe seu e-mail'); return; }
     const res = await fetch('/payment/create-direct-mp', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ courseId: <%= course.id %>, student_name: name, student_email: email })
+      body: JSON.stringify({ courseId: <%= course.id %>, name, email })
     });
-    <% } %>
     const data = await res.json();
     if (data.url) { window.location.href = data.url; }
   });
 
   document.getElementById('previewCert').addEventListener('click', async () => {
-    let name = 'Aluno Teste';
-    let email = `teste+${Date.now()}@example.com`;
+    let name = (document.getElementById('student_name')?.value || 'Aluno Teste').trim();
+    let email = (document.getElementById('student_email')?.value || `teste+${Date.now()}@example.com`).trim();
     const nameEl = document.getElementById('student_name');
     const emailEl = document.getElementById('student_email');
     if (nameEl && emailEl) {
       name = nameEl.value.trim() || name;
       email = emailEl.value.trim() || email;
     }
-    const displayName = (document.getElementById('display_student_name').value || '').trim();
-    const displayCourse = (document.getElementById('display_course_title').value || '').trim();
     const res = await fetch('/certificate/preview', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ courseId: <%= course.id %>, student_name: name, student_email: email, scorePercent: <%= typeof scorePercent !== 'undefined' ? scorePercent : 100 %>, display_student_name: displayName, display_course_title: displayCourse })
+      body: JSON.stringify({ courseId: <%= course.id %>, student_name: name, student_email: email, scorePercent: <%= typeof scorePercent !== 'undefined' ? scorePercent : 100 %> })
     });
     const data = await res.json();
     if (data.validateUrl) { window.location.href = data.validateUrl; }

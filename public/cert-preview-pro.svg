@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1414">
+  <defs>
+    <style>
+      .bg { fill: #0f0f0f; }
+      .border { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 4; }
+      .border-inner { fill: none; stroke: rgba(255,255,255,0.12); stroke-width: 2; }
+      .card { fill: #181818; }
+      .accent { fill: #ff0000; }
+      .title { font: 700 44px Helvetica, Arial, sans-serif; fill: #f1f1f1; }
+      .subtitle { font: 400 18px Times, serif; fill: #aaaaaa; }
+      .text { font: 700 28px Helvetica, Arial, sans-serif; fill: #f1f1f1; }
+      .muted { font: 400 16px Times, serif; fill: #aaaaaa; }
+      .label { font: 400 12px Times, serif; fill: #aaaaaa; }
+      .qr { fill: none; stroke: #aaaaaa; stroke-width: 2; stroke-dasharray: 6 6; }
+    </style>
+  </defs>
+  <!-- Fundo e moldura -->
+  <rect class="bg" x="0" y="0" width="1000" height="1414"/>
+  <rect class="border" x="40" y="40" width="920" height="1334"/>
+  <rect class="border-inner" x="60" y="60" width="880" height="1294"/>
+
+  <!-- Cabeçalho card -->
+  <rect class="card" x="0" y="0" width="1000" height="100"/>
+  <rect class="accent" x="0" y="100" width="1000" height="4"/>
+  <text class="subtitle" x="500" y="64" text-anchor="middle">Certificado de Conclusão</text>
+
+  <!-- Marca d'água -->
+  <text class="subtitle" x="500" y="750" text-anchor="middle" style="opacity:0.1; font: 700 100px Helvetica, Arial, sans-serif; fill:#ff0000">PLATAFORMA</text>
+
+  <!-- Título principal -->
+  <text class="title" x="500" y="180" text-anchor="middle">CERTIFICADO</text>
+
+  <!-- Corpo -->
+  <text class="muted" x="500" y="300" text-anchor="middle">Certificamos que</text>
+  <text class="text" x="500" y="350" text-anchor="middle">Nome do Aluno</text>
+  <text class="muted" x="500" y="390" text-anchor="middle">concluiu com êxito o curso</text>
+  <text class="text" x="500" y="430" text-anchor="middle">Título do Curso</text>
+
+  <!-- Metadados -->
+  <text class="muted" x="500" y="520" text-anchor="middle">Emitido em 01/01/2025</text>
+  <text class="muted" x="500" y="550" text-anchor="middle">Código de validação: ABC12345</text>
+
+  <!-- QR -->
+  <rect class="qr" x="820" y="1050" width="120" height="120" rx="8"/>
+  <text class="label" x="880" y="1190" text-anchor="middle">Escaneie para validar</text>
+
+  <!-- Assinatura -->
+  <line x1="120" y1="1150" x2="440" y2="1150" stroke="rgba(255,255,255,0.08)" stroke-width="2"/>
+  <text class="muted" x="280" y="1175" text-anchor="middle">Assinatura do responsável</text>
+  
+</svg>

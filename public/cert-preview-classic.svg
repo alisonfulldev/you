@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1414">
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .border { fill: none; stroke: #000000; stroke-width: 5; }
+      .border-inner { fill: none; stroke: #d00000; stroke-width: 3; }
+      .title { font: 700 64px Helvetica, Arial, sans-serif; fill: #121212; }
+      .subtitle { font: 400 24px Times, serif; fill: #404040; }
+      .text { font: 400 26px Times, serif; fill: #121212; }
+      .muted { font: 400 20px Times, serif; fill: #606060; }
+      .label { font: 400 16px Times, serif; fill: #606060; }
+      .issuer { font: 700 18px Helvetica, Arial, sans-serif; fill: #d00000; }
+      .signature-line { stroke: #000000; stroke-width: 2; }
+      .qr { fill: none; stroke: #606060; stroke-width: 2; stroke-dasharray: 6 6; }
+      .qr-box { fill: #ffffff; stroke: #121212; stroke-width: 2; }
+      .qr-module { fill: #121212; }
+      .qr-finder { fill: none; stroke: #121212; stroke-width: 4; }
+    </style>
+  </defs>
+  <!-- Fundo -->
+  <rect class="bg" x="0" y="0" width="1000" height="1414"/>
+  <!-- Moldura -->
+  <rect class="border" x="40" y="40" width="920" height="1334"/>
+  <rect class="border-inner" x="60" y="60" width="880" height="1294"/>
+
+  <!-- Cabeçalho -->
+  <text class="title" x="500" y="200" text-anchor="middle">CERTIFICADO</text>
+  <text class="subtitle" x="500" y="240" text-anchor="middle">de Conclusão</text>
+
+  <!-- Corpo -->
+  <text class="muted" x="500" y="340" text-anchor="middle">Certificamos que</text>
+  <text class="text" x="500" y="390" text-anchor="middle">Nome do Aluno</text>
+  <text class="muted" x="500" y="430" text-anchor="middle">concluiu com êxito</text>
+  <text class="text" x="500" y="470" text-anchor="middle">Título do Curso</text>
+  <text class="muted" x="500" y="510" text-anchor="middle">Canal: Nome do Canal</text>
+  <text class="issuer" x="500" y="545" text-anchor="middle">Emitido por You Certificados</text>
+
+  <!-- Metadados -->
+  <text class="muted" x="500" y="580" text-anchor="middle">Emitido em 01/01/2025</text>
+  <text class="muted" x="500" y="610" text-anchor="middle">Código de validação: ABC12345</text>
+
+  <!-- QR -->
+  <g id="qr-example">
+    <rect class="qr-box" x="796" y="1050" width="120" height="120" rx="8"/>
+    <!-- Padrões de busca -->
+    <rect class="qr-finder" x="808" y="1062" width="28" height="28"/>
+    <rect class="qr-finder" x="856" y="1062" width="28" height="28"/>
+    <rect class="qr-finder" x="808" y="1108" width="28" height="28"/>
+    <!-- Módulos internos (sugestão visual) -->
+    <rect class="qr-module" x="848" y="1110" width="6" height="6"/>
+    <rect class="qr-module" x="860" y="1122" width="6" height="6"/>
+    <rect class="qr-module" x="872" y="1110" width="6" height="6"/>
+    <rect class="qr-module" x="884" y="1128" width="6" height="6"/>
+    <rect class="qr-module" x="836" y="1134" width="6" height="6"/>
+    <rect class="qr-module" x="848" y="1146" width="6" height="6"/>
+    <rect class="qr-module" x="860" y="1134" width="6" height="6"/>
+    <rect class="qr-module" x="872" y="1140" width="6" height="6"/>
+    <rect class="qr-module" x="884" y="1134" width="6" height="6"/>
+    <rect class="qr-module" x="896" y="1146" width="6" height="6"/>
+  </g>
+  <text class="label" x="856" y="1190" text-anchor="middle">Escaneie para validar</text>
+
+  <!-- Assinatura -->
+  <line class="signature-line" x1="120" y1="1150" x2="440" y2="1150"/>
+  <text class="text" x="280" y="1115" text-anchor="middle">Assinante Responsável</text>
+  <text class="label" x="280" y="1175" text-anchor="middle">Assinatura do responsável</text>
+</svg>

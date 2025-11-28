@@ -1,0 +1,113 @@
+<section class="cert-issue">
+  <div class="header">
+    <h1>Emitir Certificado</h1>
+    <p class="muted">Curso: <strong><%= course.title %></strong></p>
+  </div>
+
+  <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;">
+    <div>
+      <div class="card" style="padding:16px;border:1px solid #ddd;border-radius:12px;background:#fff;">
+        <h2 style="margin-top:0;">Seus dados</h2>
+        <p class="muted" style="margin:6px 0 12px;">Informe nome e e-mail que aparecerão no certificado.</p>
+        <form id="certForm">
+          <label style="display:block;margin-bottom:6px">Nome completo</label>
+          <input type="text" id="name" placeholder="Seu nome" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px" />
+          <label style="display:block;margin:12px 0 6px">E-mail</label>
+          <input type="email" id="email" placeholder="voce@exemplo.com" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px" />
+
+          <div class="progress" style="margin:14px 0;">
+            <% if (total > 0) { %>
+              <p class="muted">Progresso: <strong><%= completed %></strong> de <strong><%= total %></strong> aulas concluídas.</p>
+            <% } else { %>
+              <p class="muted">Este curso ainda não possui aulas cadastradas.</p>
+            <% } %>
+          </div>
+
+          <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+            <button id="emitFree" class="btn pill" type="button">Emitir agora (sem pagamento)</button>
+            <button id="payStripe" class="btn ghost" type="button">Pagar e emitir (Stripe)</button>
+            <button id="payMP" class="btn ghost" type="button">Pagar e emitir (Mercado Pago)</button>
+          </div>
+          <% if (blocked) { %>
+            <p class="warn" style="color:#b00;margin-top:8px">Certificado bloqueado: conclua todas as aulas para emitir.</p>
+          <% } %>
+        </form>
+      </div>
+    </div>
+
+    <div>
+      <div class="card" style="padding:16px;border:1px solid #ddd;border-radius:12px;background:#fff;">
+        <h2 style="margin-top:0;">Prévia do Certificado</h2>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <img src="/cert-preview-classic.svg" alt="Prévia" style="max-width:260px;border:1px solid #eee;border-radius:12px" />
+          <img src="/cert-preview-pro.svg" alt="Prévia" style="max-width:260px;border:1px solid #eee;border-radius:12px" />
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  (function(){
+    const blocked = <%- JSON.stringify(blocked) %>;
+    const emitBtn = document.getElementById('emitFree');
+    const stripeBtn = document.getElementById('payStripe');
+    const mpBtn = document.getElementById('payMP');
+    const nameEl = document.getElementById('name');
+    const emailEl = document.getElementById('email');
+
+    function disableAll(){ emitBtn.disabled = true; stripeBtn.disabled = true; mpBtn.disabled = true; }
+    function enableAll(){ emitBtn.disabled = false; stripeBtn.disabled = false; mpBtn.disabled = false; }
+    if (blocked) { disableAll(); }
+
+    function getPayload(){
+      const name = String(nameEl.value||'').trim();
+      const email = String(emailEl.value||'').trim();
+      if (!name) { alert('Informe seu nome'); return null; }
+      if (!email) { alert('Informe seu e-mail'); return null; }
+      return { name, email };
+    }
+
+    emitBtn?.addEventListener('click', async function(){
+      const payload = getPayload();
+      if (!payload) return;
+      try {
+        const res = await fetch('/course/<%= course.id %>/certificate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const out = await res.json();
+        if (out && out.ok && out.validateUrl) { window.location.href = out.validateUrl; }
+        else { alert(out && out.error ? out.error : 'Falha ao emitir certificado'); }
+      } catch(e){ alert('Erro ao emitir certificado'); }
+    });
+
+    stripeBtn?.addEventListener('click', async function(){
+      const payload = getPayload();
+      if (!payload) return;
+      try {
+        const res = await fetch('/payment/create-direct', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ courseId: <%= course.id %>, name: payload.name, email: payload.email })
+        });
+        const out = await res.json();
+        if (out && out.url) { window.location.href = out.url; }
+        else { alert(out && out.error ? out.error : 'Falha ao iniciar pagamento'); }
+      } catch(e){ alert('Erro ao iniciar pagamento'); }
+    });
+
+    mpBtn?.addEventListener('click', async function(){
+      const payload = getPayload();
+      if (!payload) return;
+      try {
+        const res = await fetch('/payment/create-direct-mp', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ courseId: <%= course.id %>, name: payload.name, email: payload.email })
+        });
+        const out = await res.json();
+        if (out && out.url) { window.location.href = out.url; }
+        else { alert(out && out.error ? out.error : 'Falha ao iniciar pagamento'); }
+      } catch(e){ alert('Erro ao iniciar pagamento'); }
+    });
+  })();
+</script>
